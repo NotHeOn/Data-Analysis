@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Search Console 查询工具</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<h1>Search Console 查询工具</h1>
+
+<section id="sites-panel">
+    <button id="refresh-sites-btn">获取/刷新站点列表</button>
+    <span id="sites-status">尚未获取过站点列表</span>
+</section>
+
+<section id="call-panel">
+    <label>
+        选择函数
+        <select id="fn-select">
+            <option value="listSites">1. 查询所有站点基本信息 (listSites)</option>
+            <option value="queryPerformanceSimple">2. 简单查询站点表现 (queryPerformanceSimple)</option>
+            <option value="queryPerformanceAdvanced">3. 复杂查询站点表现 (queryPerformanceAdvanced)</option>
+            <option value="comparePeriodsSimple">4. 简单周期对比查询 (comparePeriodsSimple)</option>
+            <option value="comparePeriodsAdvanced">5. 复杂周期对比查询 (comparePeriodsAdvanced)</option>
+        </select>
+    </label>
+
+    <form id="param-form"></form>
+
+    <div class="actions">
+        <button id="call-btn" type="button">调用</button>
+        <input id="preset-name" type="text" placeholder="预设名字">
+        <button id="save-preset-btn" type="button">保存当前参数为预设</button>
+    </div>
+
+    <div id="result"></div>
+</section>
+
+<section id="presets-panel">
+    <h2>已保存的预设</h2>
+    <ul id="presets-list"></ul>
+</section>
+
+<script src="/app.js"></script>
+</body>
+</html>
