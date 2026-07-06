@@ -1,6 +1,6 @@
 body {
     font-family: system-ui, sans-serif;
-    max-width: 720px;
+    max-width: 1100px;
     margin: 2rem auto;
     padding: 0 1rem;
     color: #222;
@@ -8,19 +8,72 @@ body {
 
 h1 {
     font-size: 1.4rem;
+    margin: 0 0 0.75rem 0;
 }
+
+/* ---- Tab bar ---- */
+
+nav#tab-bar {
+    display: flex;
+    border-bottom: 2px solid #ddd;
+    margin-bottom: 1.5rem;
+}
+
+.tab-btn {
+    border: none;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    background: none;
+    padding: 0.55rem 1.1rem;
+    font-size: 0.95rem;
+    cursor: pointer;
+    margin-bottom: -2px;
+    color: #555;
+}
+
+.tab-btn:hover {
+    background: none;
+    color: #222;
+}
+
+.tab-btn.active {
+    border-bottom-color: #0969da;
+    color: #0969da;
+    font-weight: 600;
+    background: none;
+}
+
+/* ---- Layout ---- */
 
 section {
     border: 1px solid #ddd;
     border-radius: 6px;
     padding: 1rem;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.section-title {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #333;
+}
+
+/* ---- Site management tab ---- */
+
+.site-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
 }
 
 #sites-status {
-    margin-left: 0.75rem;
     color: #555;
+    font-size: 0.9rem;
 }
+
+/* ---- Form fields ---- */
 
 .field {
     display: flex;
@@ -29,7 +82,7 @@ section {
     margin-bottom: 0.75rem;
 }
 
-.field span {
+.field > span {
     font-size: 0.85rem;
     color: #444;
 }
@@ -83,6 +136,8 @@ textarea {
     margin-bottom: 0.3rem;
 }
 
+/* ---- Date shortcuts ---- */
+
 .date-shortcuts {
     display: flex;
     flex-wrap: wrap;
@@ -104,6 +159,97 @@ textarea {
     border-color: #888;
 }
 
+/* ---- Advanced details ---- */
+
+#advanced-details {
+    margin-top: 1rem;
+    border-top: 1px solid #eee;
+    padding-top: 0.25rem;
+}
+
+#advanced-details > summary {
+    cursor: pointer;
+    user-select: none;
+    padding: 0.5rem 0;
+    font-size: 0.9rem;
+    color: #555;
+    list-style: none;
+}
+
+#advanced-details > summary::before {
+    content: '▶ ';
+    font-size: 0.7rem;
+}
+
+#advanced-details[open] > summary::before {
+    content: '▼ ';
+}
+
+#advanced-details > summary:hover {
+    color: #222;
+}
+
+#advanced-params {
+    padding-top: 0.5rem;
+}
+
+/* ---- Compare mode: two-column layout ---- */
+
+#params-layout {
+    display: block;
+}
+
+#params-layout.compare-mode {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+#compare-preview {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 1rem;
+    position: sticky;
+    top: 1rem;
+}
+
+.preview-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #444;
+    margin-bottom: 0.6rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.preview-row {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    font-size: 0.83rem;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.preview-row:last-child {
+    border-bottom: none;
+}
+
+.preview-label {
+    color: #777;
+    min-width: 72px;
+    flex-shrink: 0;
+}
+
+.preview-value {
+    color: #222;
+    font-weight: 500;
+    word-break: break-all;
+}
+
+/* ---- Buttons ---- */
+
 .actions {
     display: flex;
     gap: 0.5rem;
@@ -117,6 +263,7 @@ button {
     border-radius: 4px;
     background: #f5f5f5;
     cursor: pointer;
+    font: inherit;
 }
 
 button:hover {
@@ -128,14 +275,45 @@ button:disabled {
     cursor: default;
 }
 
+.btn-primary {
+    background: #0969da;
+    color: #fff;
+    border-color: #0969da;
+    font-weight: 600;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: #0550ae;
+    border-color: #0550ae;
+}
+
+.btn-primary:disabled {
+    background: #93bce8;
+    border-color: #93bce8;
+}
+
+#compare-toggle-btn.active {
+    background: #ddf4ff;
+    border-color: #0969da;
+    color: #0969da;
+    font-weight: 600;
+}
+
+/* ---- Results ---- */
+
 #result {
     background: #f7f7f7;
     border: 1px solid #ddd;
     border-radius: 4px;
     padding: 0.75rem;
-    max-height: 500px;
+    max-height: 600px;
     overflow: auto;
     font-size: 0.85rem;
+    margin-top: 1rem;
+}
+
+#result:empty {
+    display: none;
 }
 
 #result pre {
@@ -147,6 +325,7 @@ button:disabled {
 .result-meta {
     margin-bottom: 0.5rem;
     color: #555;
+    font-size: 0.85rem;
 }
 
 .result-empty {
@@ -177,6 +356,8 @@ table.result-table th {
 table.result-table tr:nth-child(even) {
     background: #fafafa;
 }
+
+/* ---- Metric cells (compare table) ---- */
 
 .metric-cell {
     display: flex;
@@ -220,9 +401,12 @@ table.result-table tr:nth-child(even) {
     color: #0969da;
 }
 
+/* ---- Presets ---- */
+
 #presets-list {
     list-style: none;
     padding: 0;
+    margin: 0 0 0.75rem 0;
 }
 
 #presets-list li {
@@ -235,4 +419,5 @@ table.result-table tr:nth-child(even) {
 
 #presets-list li span {
     flex: 1;
+    font-size: 0.88rem;
 }

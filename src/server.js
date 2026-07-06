@@ -119,9 +119,26 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (req.method === 'POST' && pathname === '/api/sites/refresh') {
-            const sites = await gsc.listSites()
-            writeJsonFile(sitesPath, sites)
-            return sendJson(res, 200, { sites })
+            const freshSites = await gsc.listSites()
+            const existing = readJsonFile(sitesPath)
+            const existingMap = new Map(existing.map(s => [s.siteUrl, s]))
+            const merged = freshSites.map(s => {
+                const e = existingMap.get(s.siteUrl) || {}
+                return { ...s, alias: e.alias || '', defaultDataState: e.defaultDataState || 'final' }
+            })
+            writeJsonFile(sitesPath, merged)
+            return sendJson(res, 200, { sites: merged })
+        }
+
+        if (req.method === 'PUT' && pathname === '/api/sites/config') {
+            const { siteUrl, ...patch } = await readBody(req)
+            const sites = readJsonFile(sitesPath)
+            const site = sites.find(s => s.siteUrl === siteUrl)
+            if (site) {
+                Object.assign(site, patch)
+                writeJsonFile(sitesPath, sites)
+            }
+            return sendJson(res, 200, { ok: true })
         }
 
         return serveStatic(req, res, pathname)

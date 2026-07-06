@@ -1,5 +1,6 @@
 'use strict'
 
+// --- Constants ---
 const DIMENSION_OPTIONS = ['query', 'page', 'country', 'device', 'date', 'searchAppearance']
 const FILTER_OPERATORS = ['equals', 'notEquals', 'contains', 'notContains', 'includingRegex', 'excludingRegex']
 const ROWLIMIT_PRESETS = [10, 25, 50, 100, 250, 500, 1000, 2000, 5000]
@@ -13,150 +14,100 @@ const DATE_SHORTCUTS = [
     { label: '近28天', days: 28 },
     { label: '近90天', days: 90 },
 ]
-
 const DIMENSION_LABELS = {
     query: '搜索词', page: '页面', country: '国家', device: '设备', date: '日期', searchAppearance: '搜索样式'
 }
 const METRIC_LABELS = { clicks: '点击', impressions: '展现', ctr: '点击率', position: '排名' }
 
-const FIELD_DEFS = {
-    dataState: { label: '数据状态', type: 'select', options: ['all', 'final'], default: 'all' },
-    startDate: { label: '起始日期', type: 'date' },
-    endDate: { label: '结束日期', type: 'date' },
-    searchType: { label: '搜索类型', type: 'select', options: ['web', 'image', 'video', 'news', 'discover', 'googleNews'], default: 'web' },
-    orderByMetric: { label: '排序 metric', type: 'select', options: ['', 'clicks', 'impressions', 'ctr', 'position'], default: '' },
-    orderByDirection: { label: '排序方向', type: 'select', options: ['descending', 'ascending'], default: 'descending' }
-}
-
-const FUNCTIONS = {
-    listSites: { fields: [] },
-    queryPerformanceSimple: { fields: ['siteUrl', 'dataState', 'startDate', 'endDate', 'dimensions', 'rowLimit'] },
-    queryPerformanceAdvanced: { fields: ['siteUrl', 'dataState', 'startDate', 'endDate', 'dimensions', 'searchType', 'rowLimit', 'startRow', 'orderByMetric', 'orderByDirection', 'filters', 'metricFilters'] },
-    comparePeriodsSimple: { fields: ['siteUrl', 'dataState', 'startDate', 'endDate', 'dimensions', 'rowLimit'] },
-    comparePeriodsAdvanced: { fields: ['siteUrl', 'dataState', 'startDate', 'endDate', 'dimensions', 'searchType', 'rowLimit', 'startRow', 'orderByMetric', 'orderByDirection', 'filters', 'metricFilters', 'previousMetricFilters'] }
-}
-
+// --- State ---
 let cachedSites = []
 let lastDateShortcut = null
+let compareMode = false
 
-function paramsToFieldValue(key, params) {
-    if (key === 'orderByMetric') return params.orderBy ? params.orderBy.metric : ''
-    if (key === 'orderByDirection') return params.orderBy ? params.orderBy.direction : undefined
-    return params[key] != null ? params[key] : undefined
+// --- DOM helpers ---
+
+function el(tag, opts) {
+    opts = opts || {}
+    const node = document.createElement(tag)
+    if (opts.className) node.className = opts.className
+    if (opts.text != null) node.textContent = opts.text
+    if (opts.id) node.id = opts.id
+    return node
 }
 
-function fieldValue(key, prefill, fallback) {
-    if (!prefill) return fallback
-    const v = paramsToFieldValue(key, prefill)
-    return v === undefined ? fallback : v
+function mkField(labelText, content) {
+    const wrapper = document.createElement('label')
+    wrapper.className = 'field'
+    const span = document.createElement('span')
+    span.textContent = labelText
+    wrapper.appendChild(span)
+    wrapper.appendChild(content)
+    return wrapper
 }
 
-function buildSiteUrlInput(prefillSiteUrl) {
+// --- Date helpers ---
+
+function dateRangeFromShortcut(days, dataState) {
+    const lagDays = dataState === 'final' ? 3 : 1
+    const end = new Date()
+    end.setDate(end.getDate() - lagDays)
+    const start = new Date(end)
+    start.setDate(end.getDate() - (days - 1))
+    const fmt = function(d) { return d.toISOString().slice(0, 10) }
+    return { startDate: fmt(start), endDate: fmt(end) }
+}
+
+function computePreviousPeriod(startDate, endDate) {
+    const start = new Date(startDate + 'T00:00:00Z')
+    const end = new Date(endDate + 'T00:00:00Z')
+    const days = Math.round((end - start) / 86400000) + 1
+    const prevEnd = new Date(start)
+    prevEnd.setUTCDate(prevEnd.getUTCDate() - 1)
+    const prevStart = new Date(prevEnd)
+    prevStart.setUTCDate(prevStart.getUTCDate() - (days - 1))
+    const fmt = function(d) { return d.toISOString().slice(0, 10) }
+    return { startDate: fmt(prevStart), endDate: fmt(prevEnd) }
+}
+
+// --- Shared control builders ---
+
+function buildSelectWithCustom(o) {
     const container = document.createElement('span')
-
-    if (cachedSites.length) {
-        const select = document.createElement('select')
-        select.id = 'field-siteUrl-select'
-        for (const site of cachedSites) {
-            const opt = document.createElement('option')
-            opt.value = site.siteUrl
-            opt.textContent = site.siteUrl + (site.permissionLevel ? ' (' + site.permissionLevel + ')' : '')
-            select.appendChild(opt)
-        }
-        const manualOpt = document.createElement('option')
-        manualOpt.value = '__manual__'
-        manualOpt.textContent = '其他（手动输入）'
-        select.appendChild(manualOpt)
-
-        const manualInput = document.createElement('input')
-        manualInput.type = 'text'
-        manualInput.id = 'field-siteUrl-manual'
-        manualInput.placeholder = 'https://example.com/'
-        manualInput.style.display = 'none'
-
-        select.addEventListener('change', () => {
-            manualInput.style.display = select.value === '__manual__' ? '' : 'none'
-        })
-
-        const isKnownSite = prefillSiteUrl && cachedSites.some(s => s.siteUrl === prefillSiteUrl)
-        if (isKnownSite) {
-            select.value = prefillSiteUrl
-        } else if (prefillSiteUrl) {
-            select.value = '__manual__'
-            manualInput.style.display = ''
-            manualInput.value = prefillSiteUrl
-        }
-
-        container.appendChild(select)
-        container.appendChild(manualInput)
-    } else {
-        const input = document.createElement('input')
-        input.type = 'text'
-        input.id = 'field-siteUrl-text'
-        input.placeholder = 'https://example.com/'
-        input.value = prefillSiteUrl || ''
-        container.appendChild(input)
-    }
-    return container
-}
-
-function readSiteUrl() {
-    if (cachedSites.length) {
-        const select = document.getElementById('field-siteUrl-select')
-        if (select.value === '__manual__') {
-            return document.getElementById('field-siteUrl-manual').value
-        }
-        return select.value
-    }
-    return document.getElementById('field-siteUrl-text').value
-}
-
-function buildSelectWithCustom({ idPrefix, options, current, customType, customLabel }) {
-    const container = document.createElement('span')
-
     const select = document.createElement('select')
-    select.id = 'field-' + idPrefix + '-select'
-    for (const opt of options) {
-        const optionEl = document.createElement('option')
-        optionEl.value = String(opt)
-        optionEl.textContent = String(opt)
-        select.appendChild(optionEl)
+    select.id = 'field-' + o.idPrefix + '-select'
+    for (let i = 0; i < o.options.length; i++) {
+        const optEl = document.createElement('option')
+        optEl.value = String(o.options[i])
+        optEl.textContent = String(o.options[i])
+        select.appendChild(optEl)
     }
     const customOpt = document.createElement('option')
     customOpt.value = '__custom__'
-    customOpt.textContent = customLabel
+    customOpt.textContent = o.customLabel
     select.appendChild(customOpt)
-
     const customInput = document.createElement('input')
-    customInput.type = customType
-    customInput.id = 'field-' + idPrefix + '-custom'
+    customInput.type = o.customType
+    customInput.id = 'field-' + o.idPrefix + '-custom'
     customInput.style.display = 'none'
-
-    select.addEventListener('change', () => {
+    select.addEventListener('change', function() {
         customInput.style.display = select.value === '__custom__' ? '' : 'none'
     })
-
-    const isPreset = current != null && current !== '' && options.map(String).includes(String(current))
-    if (isPreset) {
-        select.value = String(current)
-    } else if (current != null && current !== '') {
-        select.value = '__custom__'
-        customInput.style.display = ''
-        customInput.value = current
-    } else {
-        select.value = String(options[0])
-    }
-
+    const c = o.current
+    const isPreset = c != null && c !== '' && o.options.map(String).indexOf(String(c)) >= 0
+    if (isPreset) { select.value = String(c) }
+    else if (c != null && c !== '') { select.value = '__custom__'; customInput.style.display = ''; customInput.value = c }
+    else { select.value = String(o.options[0]) }
     container.appendChild(select)
     container.appendChild(customInput)
-
     return container
 }
 
 function readSelectWithCustom(idPrefix) {
     const select = document.getElementById('field-' + idPrefix + '-select')
+    if (!select) return ''
     if (select.value === '__custom__') {
-        return document.getElementById('field-' + idPrefix + '-custom').value
+        const c = document.getElementById('field-' + idPrefix + '-custom')
+        return c ? c.value : ''
     }
     return select.value
 }
@@ -165,7 +116,7 @@ function buildDimensionsCheckboxes(currentValues) {
     const container = document.createElement('span')
     container.className = 'checkbox-group'
     const selected = new Set(currentValues || [])
-    for (const dim of DIMENSION_OPTIONS) {
+    DIMENSION_OPTIONS.forEach(function(dim) {
         const label = document.createElement('label')
         label.className = 'checkbox-item'
         const input = document.createElement('input')
@@ -173,401 +124,150 @@ function buildDimensionsCheckboxes(currentValues) {
         input.className = 'dimension-checkbox'
         input.value = dim
         input.checked = selected.has(dim)
+        input.addEventListener('change', updateComparePreview)
         label.appendChild(input)
-        label.appendChild(document.createTextNode(dim))
+        label.appendChild(document.createTextNode(DIMENSION_LABELS[dim] || dim))
         container.appendChild(label)
-    }
+    })
     return container
 }
 
 function readDimensions() {
-    return Array.from(document.querySelectorAll('.dimension-checkbox:checked')).map(el => el.value)
+    return Array.from(document.querySelectorAll('.dimension-checkbox:checked')).map(function(e) { return e.value })
 }
 
 function buildFiltersEditor(currentFilters) {
     const container = document.createElement('div')
     container.id = 'filters-editor'
-
     const rowsContainer = document.createElement('div')
     rowsContainer.id = 'filters-rows'
     container.appendChild(rowsContainer)
-
     function addRow(filter) {
         const row = document.createElement('div')
         row.className = 'filter-row'
-
-        const dimSelect = document.createElement('select')
-        dimSelect.className = 'filter-dimension'
-        for (const dim of DIMENSION_OPTIONS) {
+        const dimSel = document.createElement('select')
+        dimSel.className = 'filter-dimension'
+        DIMENSION_OPTIONS.forEach(function(dim) {
             const opt = document.createElement('option')
             opt.value = dim
-            opt.textContent = dim
-            dimSelect.appendChild(opt)
-        }
-        if (filter && filter.dimension) dimSelect.value = filter.dimension
-
-        const opSelect = document.createElement('select')
-        opSelect.className = 'filter-operator'
-        for (const op of FILTER_OPERATORS) {
+            opt.textContent = DIMENSION_LABELS[dim] || dim
+            dimSel.appendChild(opt)
+        })
+        if (filter && filter.dimension) dimSel.value = filter.dimension
+        const opSel = document.createElement('select')
+        opSel.className = 'filter-operator'
+        FILTER_OPERATORS.forEach(function(op) {
             const opt = document.createElement('option')
             opt.value = op
             opt.textContent = op
-            opSelect.appendChild(opt)
-        }
-        if (filter && filter.operator) opSelect.value = filter.operator
-
+            opSel.appendChild(opt)
+        })
+        if (filter && filter.operator) opSel.value = filter.operator
         const exprInput = document.createElement('input')
         exprInput.type = 'text'
         exprInput.className = 'filter-expression'
         exprInput.placeholder = '筛选值，如 /blog/ 或 US'
         if (filter && filter.expression != null) exprInput.value = filter.expression
-
-        const removeBtn = document.createElement('button')
-        removeBtn.type = 'button'
-        removeBtn.textContent = '删除'
-        removeBtn.addEventListener('click', () => row.remove())
-
-        row.appendChild(dimSelect)
-        row.appendChild(opSelect)
+        const rmBtn = document.createElement('button')
+        rmBtn.type = 'button'
+        rmBtn.textContent = '删除'
+        rmBtn.addEventListener('click', function() { row.remove() })
+        row.appendChild(dimSel)
+        row.appendChild(opSel)
         row.appendChild(exprInput)
-        row.appendChild(removeBtn)
+        row.appendChild(rmBtn)
         rowsContainer.appendChild(row)
     }
-
     const addBtn = document.createElement('button')
     addBtn.type = 'button'
     addBtn.textContent = '+ 添加筛选条件'
-    addBtn.addEventListener('click', () => addRow())
+    addBtn.addEventListener('click', function() { addRow() })
     container.appendChild(addBtn)
-
-    for (const f of (currentFilters || [])) addRow(f)
-
+    ;(currentFilters || []).forEach(function(f) { addRow(f) })
     return container
 }
 
 function readFilters() {
     const rows = document.querySelectorAll('#filters-rows .filter-row')
     const filters = []
-    rows.forEach(row => {
-        const dimension = row.querySelector('.filter-dimension').value
-        const operator = row.querySelector('.filter-operator').value
+    rows.forEach(function(row) {
         const expression = row.querySelector('.filter-expression').value
-        if (expression !== '') filters.push({ dimension, operator, expression })
+        if (expression !== '') filters.push({
+            dimension: row.querySelector('.filter-dimension').value,
+            operator: row.querySelector('.filter-operator').value,
+            expression: expression
+        })
     })
     return filters
 }
 
-function buildMetricFiltersEditor(idPrefix, currentMetricFilters, hintText) {
+function buildMetricFiltersEditor(idPrefix, currentFilters, hintText) {
     const container = document.createElement('div')
     container.id = idPrefix + '-editor'
-
-    const hint = document.createElement('div')
-    hint.className = 'field-hint'
-    hint.textContent = hintText
-    container.appendChild(hint)
-
+    if (hintText) container.appendChild(el('div', { className: 'field-hint', text: hintText }))
     const rowsContainer = document.createElement('div')
     rowsContainer.id = idPrefix + '-rows'
     container.appendChild(rowsContainer)
-
     function addRow(filter) {
         const row = document.createElement('div')
         row.className = 'filter-row'
-
-        const metricSelect = document.createElement('select')
-        metricSelect.className = 'metric-filter-metric'
-        for (const m of METRIC_OPTIONS) {
+        const metSel = document.createElement('select')
+        metSel.className = 'metric-filter-metric'
+        METRIC_OPTIONS.forEach(function(m) {
             const opt = document.createElement('option')
             opt.value = m
-            opt.textContent = m
-            metricSelect.appendChild(opt)
-        }
-        if (filter && filter.metric) metricSelect.value = filter.metric
-
-        const opSelect = document.createElement('select')
-        opSelect.className = 'metric-filter-operator'
-        for (const op of METRIC_OPERATORS) {
+            opt.textContent = METRIC_LABELS[m] || m
+            metSel.appendChild(opt)
+        })
+        if (filter && filter.metric) metSel.value = filter.metric
+        const opSel = document.createElement('select')
+        opSel.className = 'metric-filter-operator'
+        METRIC_OPERATORS.forEach(function(op) {
             const opt = document.createElement('option')
             opt.value = op
             opt.textContent = op
-            opSelect.appendChild(opt)
-        }
-        if (filter && filter.operator) opSelect.value = filter.operator
-
-        const valueInput = document.createElement('input')
-        valueInput.type = 'number'
-        valueInput.className = 'metric-filter-value filter-expression'
-        valueInput.placeholder = '数值'
-        if (filter && filter.value != null) valueInput.value = filter.value
-
-        const removeBtn = document.createElement('button')
-        removeBtn.type = 'button'
-        removeBtn.textContent = '删除'
-        removeBtn.addEventListener('click', () => row.remove())
-
-        row.appendChild(metricSelect)
-        row.appendChild(opSelect)
-        row.appendChild(valueInput)
-        row.appendChild(removeBtn)
+            opSel.appendChild(opt)
+        })
+        if (filter && filter.operator) opSel.value = filter.operator
+        const valInput = document.createElement('input')
+        valInput.type = 'number'
+        valInput.className = 'metric-filter-value filter-expression'
+        valInput.placeholder = '数值'
+        if (filter && filter.value != null) valInput.value = filter.value
+        const rmBtn = document.createElement('button')
+        rmBtn.type = 'button'
+        rmBtn.textContent = '删除'
+        rmBtn.addEventListener('click', function() { row.remove() })
+        row.appendChild(metSel)
+        row.appendChild(opSel)
+        row.appendChild(valInput)
+        row.appendChild(rmBtn)
         rowsContainer.appendChild(row)
     }
-
     const addBtn = document.createElement('button')
     addBtn.type = 'button'
     addBtn.textContent = '+ 添加指标筛选'
-    addBtn.addEventListener('click', () => addRow())
+    addBtn.addEventListener('click', function() { addRow() })
     container.appendChild(addBtn)
-
-    for (const f of (currentMetricFilters || [])) addRow(f)
-
+    ;(currentFilters || []).forEach(function(f) { addRow(f) })
     return container
 }
 
 function readMetricFilters(idPrefix) {
     const rows = document.querySelectorAll('#' + idPrefix + '-rows .filter-row')
-    const metricFilters = []
-    rows.forEach(row => {
-        const metric = row.querySelector('.metric-filter-metric').value
-        const operator = row.querySelector('.metric-filter-operator').value
+    const filters = []
+    rows.forEach(function(row) {
         const raw = row.querySelector('.metric-filter-value').value
-        if (raw !== '') metricFilters.push({ metric, operator, value: parseFloat(raw) })
-    })
-    return metricFilters
-}
-
-function dateRangeFromShortcut(days, dataState) {
-    const lagDays = dataState === 'final' ? 3 : 1
-    const end = new Date()
-    end.setDate(end.getDate() - lagDays)
-    const start = new Date(end)
-    start.setDate(end.getDate() - (days - 1))
-    const fmt = d => d.toISOString().slice(0, 10)
-    return { startDate: fmt(start), endDate: fmt(end) }
-}
-
-function calcDateRange(days) {
-    const dataStateEl = document.getElementById('field-dataState')
-    return dateRangeFromShortcut(days, dataStateEl ? dataStateEl.value : 'all')
-}
-
-function buildDateShortcuts() {
-    const container = document.createElement('div')
-    container.className = 'date-shortcuts'
-    for (const { label, days } of DATE_SHORTCUTS) {
-        const btn = document.createElement('button')
-        btn.type = 'button'
-        btn.className = 'date-shortcut-btn'
-        btn.textContent = label
-        btn.addEventListener('click', () => {
-            const { startDate, endDate } = calcDateRange(days)
-            document.getElementById('field-startDate').value = startDate
-            document.getElementById('field-endDate').value = endDate
-            lastDateShortcut = { label, days }
+        if (raw !== '') filters.push({
+            metric: row.querySelector('.metric-filter-metric').value,
+            operator: row.querySelector('.metric-filter-operator').value,
+            value: parseFloat(raw)
         })
-        container.appendChild(btn)
-    }
-    return container
+    })
+    return filters
 }
 
-function renderForm(fnKey, prefill) {
-    const form = document.getElementById('param-form')
-    form.innerHTML = ''
-    const fields = FUNCTIONS[fnKey].fields
-
-    for (const key of fields) {
-        const wrapper = document.createElement('label')
-        wrapper.className = 'field'
-
-        if (key === 'siteUrl') {
-            const labelText = document.createElement('span')
-            labelText.textContent = '站点 siteUrl'
-            wrapper.appendChild(labelText)
-            wrapper.appendChild(buildSiteUrlInput(prefill && prefill.siteUrl))
-            form.appendChild(wrapper)
-            continue
-        }
-
-        if (key === 'dimensions') {
-            const labelText = document.createElement('span')
-            labelText.textContent = '维度'
-            wrapper.appendChild(labelText)
-            wrapper.appendChild(buildDimensionsCheckboxes(prefill && prefill.dimensions))
-            form.appendChild(wrapper)
-            continue
-        }
-
-        if (key === 'filters') {
-            const labelText = document.createElement('span')
-            labelText.textContent = '筛选器（维度）'
-            wrapper.appendChild(labelText)
-            wrapper.appendChild(buildFiltersEditor(prefill && prefill.filters))
-            form.appendChild(wrapper)
-            continue
-        }
-
-        if (key === 'metricFilters') {
-            const isCompare = fnKey.startsWith('comparePeriods')
-            const labelText = document.createElement('span')
-            labelText.textContent = isCompare ? '筛选器（指标 - 当期）' : '筛选器（指标）'
-            wrapper.appendChild(labelText)
-            const hint = isCompare
-                ? '仅按当前周期（不含对比的上一周期）的原始数值筛选，且只对本次已返回的这一页结果生效（受最大返回行数限制）'
-                : '仅对本次已返回的这一页结果生效（受最大返回行数限制），不是全量筛选'
-            wrapper.appendChild(buildMetricFiltersEditor('metric-filters', prefill && prefill.metricFilters, hint))
-            form.appendChild(wrapper)
-            continue
-        }
-
-        if (key === 'previousMetricFilters') {
-            const labelText = document.createElement('span')
-            labelText.textContent = '筛选器（指标 - 上一期）'
-            wrapper.appendChild(labelText)
-            const hint = '按上一周期的指标数值筛选，新词的上期值视为 0（例如设置 clicks > 0 可排除新词和上期无点击的词）'
-            wrapper.appendChild(buildMetricFiltersEditor('previous-metric-filters', prefill && prefill.previousMetricFilters, hint))
-            form.appendChild(wrapper)
-            continue
-        }
-
-        if (key === 'rowLimit' || key === 'startRow') {
-            const labelText = document.createElement('span')
-            labelText.textContent = key === 'rowLimit' ? '最大返回行数' : '起始行 (startRow)'
-            wrapper.appendChild(labelText)
-            wrapper.appendChild(buildSelectWithCustom({
-                idPrefix: key,
-                options: key === 'rowLimit' ? ROWLIMIT_PRESETS : STARTROW_PRESETS,
-                current: prefill && prefill[key],
-                customType: 'number',
-                customLabel: '自定义'
-            }))
-            form.appendChild(wrapper)
-            continue
-        }
-
-        if (key === 'startDate' && fields.includes('endDate')) {
-            const shortcutWrapper = document.createElement('div')
-            shortcutWrapper.className = 'field'
-            const shortcutLabel = document.createElement('span')
-            shortcutLabel.textContent = '快捷日期'
-            shortcutWrapper.appendChild(shortcutLabel)
-            shortcutWrapper.appendChild(buildDateShortcuts())
-            form.appendChild(shortcutWrapper)
-        }
-
-        const def = FIELD_DEFS[key]
-        const labelText = document.createElement('span')
-        labelText.textContent = def.label
-        wrapper.appendChild(labelText)
-
-        if (def.type === 'select') {
-            const select = document.createElement('select')
-            select.id = 'field-' + key
-            for (const opt of def.options) {
-                const optionEl = document.createElement('option')
-                optionEl.value = opt
-                optionEl.textContent = opt === '' ? '(不排序)' : opt
-                select.appendChild(optionEl)
-            }
-            select.value = fieldValue(key, prefill, def.default)
-            wrapper.appendChild(select)
-        } else {
-            const input = document.createElement('input')
-            input.id = 'field-' + key
-            input.type = def.type
-            input.placeholder = def.placeholder || ''
-            input.value = fieldValue(key, prefill, '')
-            if (key === 'startDate' || key === 'endDate') {
-                input.addEventListener('input', () => { lastDateShortcut = null })
-            }
-            wrapper.appendChild(input)
-        }
-        form.appendChild(wrapper)
-    }
-}
-
-function collectParams(fnKey) {
-    const fields = FUNCTIONS[fnKey].fields
-    const params = {}
-
-    for (const key of fields) {
-        if (key === 'siteUrl') {
-            params.siteUrl = readSiteUrl()
-            continue
-        }
-        if (key === 'orderByMetric' || key === 'orderByDirection') continue
-
-        if (key === 'dimensions') {
-            params.dimensions = readDimensions()
-            continue
-        }
-        if (key === 'filters') {
-            params.filters = readFilters()
-            continue
-        }
-        if (key === 'metricFilters') {
-            params.metricFilters = readMetricFilters('metric-filters')
-            continue
-        }
-        if (key === 'previousMetricFilters') {
-            params.previousMetricFilters = readMetricFilters('previous-metric-filters')
-            continue
-        }
-        if (key === 'rowLimit' || key === 'startRow') {
-            const raw = readSelectWithCustom(key)
-            if (raw !== '') params[key] = parseInt(raw, 10)
-            continue
-        }
-
-        const raw = document.getElementById('field-' + key).value
-        if (raw !== '') params[key] = raw
-    }
-
-    if (fields.includes('orderByMetric')) {
-        const metric = document.getElementById('field-orderByMetric').value
-        if (metric) {
-            const direction = document.getElementById('field-orderByDirection').value
-            params.orderBy = { metric, direction }
-        }
-    }
-
-    return params
-}
-
-async function loadCachedSites() {
-    const res = await fetch('/api/sites')
-    const data = await res.json()
-    cachedSites = data.sites || []
-    updateSitesStatus()
-}
-
-function updateSitesStatus() {
-    document.getElementById('sites-status').textContent =
-        cachedSites.length ? `已缓存 ${cachedSites.length} 个站点` : '尚未获取过站点列表'
-}
-
-async function refreshSites() {
-    const btn = document.getElementById('refresh-sites-btn')
-    btn.disabled = true
-    document.getElementById('sites-status').textContent = '刷新中...'
-    try {
-        const res = await fetch('/api/sites/refresh', { method: 'POST' })
-        const data = await res.json()
-        if (data.error) throw new Error(data.error)
-        cachedSites = data.sites || []
-        updateSitesStatus()
-        renderForm(document.getElementById('fn-select').value)
-    } catch (e) {
-        document.getElementById('sites-status').textContent = '刷新失败: ' + e.message
-    } finally {
-        btn.disabled = false
-    }
-}
-
-function el(tag, opts = {}) {
-    const node = document.createElement(tag)
-    if (opts.className) node.className = opts.className
-    if (opts.text != null) node.textContent = opts.text
-    return node
-}
+// --- Formatting ---
 
 function formatMetricValue(metric, value) {
     if (value == null) return '—'
@@ -576,9 +276,7 @@ function formatMetricValue(metric, value) {
     return String(value)
 }
 
-function isImproved(metric, delta) {
-    return metric === 'position' ? delta < 0 : delta > 0
-}
+function isImproved(metric, delta) { return metric === 'position' ? delta < 0 : delta > 0 }
 
 function formatDelta(metric, delta) {
     if (delta == null) return ''
@@ -599,47 +297,574 @@ function deltaClass(metric, delta) {
     return isImproved(metric, delta) ? 'positive' : 'negative'
 }
 
-function renderSitesTable(container, sites) {
-    if (!sites || !sites.length) {
-        container.appendChild(el('div', { className: 'result-empty', text: '无数据' }))
+function siteDisplayName(site) {
+    return site.alias ? (site.alias + '（' + site.siteUrl + '）') : site.siteUrl
+}
+
+// ============================================================
+// Tab 1: Site management
+// ============================================================
+
+async function loadCachedSites() {
+    const res = await fetch('/api/sites')
+    const data = await res.json()
+    cachedSites = data.sites || []
+}
+
+async function refreshSites() {
+    const btn = document.getElementById('refresh-sites-btn')
+    const status = document.getElementById('sites-status')
+    btn.disabled = true
+    status.textContent = '刷新中...'
+    try {
+        const res = await fetch('/api/sites/refresh', { method: 'POST' })
+        const data = await res.json()
+        if (data.error) throw new Error(data.error)
+        cachedSites = data.sites || []
+        status.textContent = '已缓存 ' + cachedSites.length + ' 个站点'
+        renderSitesConfigTable()
+        const basicEl = document.getElementById('basic-params')
+        if (basicEl) {
+            const prefill = readBasicParams()
+            basicEl.replaceWith(buildBasicParams(prefill))
+        }
+    } catch (e) {
+        status.textContent = '刷新失败: ' + e.message
+    } finally {
+        btn.disabled = false
+    }
+}
+
+async function saveSiteConfig(siteUrl, patch) {
+    await fetch('/api/sites/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ siteUrl: siteUrl }, patch))
+    })
+    const site = cachedSites.find(function(s) { return s.siteUrl === siteUrl })
+    if (site) Object.assign(site, patch)
+    const selectEl = document.getElementById('field-siteUrl-select')
+    if (selectEl) {
+        for (let i = 0; i < selectEl.options.length; i++) {
+            const s = cachedSites.find(function(cs) { return cs.siteUrl === selectEl.options[i].value })
+            if (s) selectEl.options[i].textContent = siteDisplayName(s)
+        }
+    }
+}
+
+function renderSitesConfigTable() {
+    const container = document.getElementById('sites-config-container')
+    if (!container) return
+    container.innerHTML = ''
+    if (!cachedSites.length) {
+        container.appendChild(el('p', { className: 'result-empty', text: '尚无缓存站点，请点击"刷新站点列表"' }))
         return
     }
     const table = document.createElement('table')
     table.className = 'result-table'
     const thead = document.createElement('thead')
     const headRow = document.createElement('tr')
-    ;['站点', '权限级别'].forEach(t => headRow.appendChild(el('th', { text: t })))
+    ;['站点 URL', '权限', '别名', '默认数据状态'].forEach(function(t) { headRow.appendChild(el('th', { text: t })) })
     thead.appendChild(headRow)
     table.appendChild(thead)
     const tbody = document.createElement('tbody')
-    sites.forEach(s => {
-        const row = document.createElement('tr')
-        row.appendChild(el('td', { text: s.siteUrl }))
-        row.appendChild(el('td', { text: s.permissionLevel }))
-        tbody.appendChild(row)
+    cachedSites.forEach(function(site) {
+        const tr = document.createElement('tr')
+        tr.appendChild(el('td', { text: site.siteUrl }))
+        tr.appendChild(el('td', { text: site.permissionLevel || '' }))
+        const aliasInput = document.createElement('input')
+        aliasInput.type = 'text'
+        aliasInput.value = site.alias || ''
+        aliasInput.placeholder = '设置别名'
+        aliasInput.style.width = '130px'
+        let aliasTimer
+        aliasInput.addEventListener('input', function() {
+            clearTimeout(aliasTimer)
+            aliasTimer = setTimeout(function() { saveSiteConfig(site.siteUrl, { alias: aliasInput.value.trim() }) }, 600)
+        })
+        const aliasTd = document.createElement('td')
+        aliasTd.appendChild(aliasInput)
+        tr.appendChild(aliasTd)
+        const dsSelect = document.createElement('select')
+        ;['final', 'all'].forEach(function(v) {
+            const opt = document.createElement('option')
+            opt.value = v
+            opt.textContent = v
+            dsSelect.appendChild(opt)
+        })
+        dsSelect.value = site.defaultDataState || 'final'
+        dsSelect.addEventListener('change', function() { saveSiteConfig(site.siteUrl, { defaultDataState: dsSelect.value }) })
+        const dsTd = document.createElement('td')
+        dsTd.appendChild(dsSelect)
+        tr.appendChild(dsTd)
+        tbody.appendChild(tr)
     })
     table.appendChild(tbody)
     container.appendChild(table)
 }
 
-function renderRowsTable(container, rows, dimensions) {
-    if (!rows || !rows.length) {
-        container.appendChild(el('div', { className: 'result-empty', text: '无数据' }))
+function renderSitesTab() {
+    const container = document.getElementById('tab-sites')
+    container.innerHTML = ''
+    const section = document.createElement('section')
+    const topRow = document.createElement('div')
+    topRow.className = 'site-actions'
+    const refreshBtn = document.createElement('button')
+    refreshBtn.id = 'refresh-sites-btn'
+    refreshBtn.textContent = '刷新站点列表'
+    refreshBtn.addEventListener('click', refreshSites)
+    const status = el('span', { id: 'sites-status' })
+    status.textContent = cachedSites.length ? ('已缓存 ' + cachedSites.length + ' 个站点') : '尚未获取站点列表'
+    topRow.appendChild(refreshBtn)
+    topRow.appendChild(status)
+    section.appendChild(topRow)
+    section.appendChild(el('div', { id: 'sites-config-container' }))
+    container.appendChild(section)
+    renderSitesConfigTable()
+}
+
+// ============================================================
+// Tab 2: Site URL select
+// ============================================================
+
+function buildSiteUrlSelect(prefillSiteUrl) {
+    const container = document.createElement('span')
+    if (!cachedSites.length) {
+        const input = document.createElement('input')
+        input.type = 'text'
+        input.id = 'field-siteUrl-text'
+        input.placeholder = 'https://example.com/'
+        input.value = prefillSiteUrl || ''
+        container.appendChild(input)
+        return container
+    }
+    const select = document.createElement('select')
+    select.id = 'field-siteUrl-select'
+    cachedSites.forEach(function(site) {
+        const opt = document.createElement('option')
+        opt.value = site.siteUrl
+        opt.textContent = siteDisplayName(site)
+        select.appendChild(opt)
+    })
+    const manualOpt = document.createElement('option')
+    manualOpt.value = '__manual__'
+    manualOpt.textContent = '其他（手动输入）'
+    select.appendChild(manualOpt)
+    const manualInput = document.createElement('input')
+    manualInput.type = 'text'
+    manualInput.id = 'field-siteUrl-manual'
+    manualInput.placeholder = 'https://example.com/'
+    manualInput.style.display = 'none'
+    select.addEventListener('change', function() {
+        manualInput.style.display = select.value === '__manual__' ? '' : 'none'
+        if (select.value !== '__manual__') onSiteChange(select.value)
+    })
+    if (prefillSiteUrl && cachedSites.some(function(s) { return s.siteUrl === prefillSiteUrl })) {
+        select.value = prefillSiteUrl
+    } else if (prefillSiteUrl) {
+        select.value = '__manual__'
+        manualInput.style.display = ''
+        manualInput.value = prefillSiteUrl
+    }
+    container.appendChild(select)
+    container.appendChild(manualInput)
+    return container
+}
+
+function readSiteUrl() {
+    const select = document.getElementById('field-siteUrl-select')
+    if (select) {
+        if (select.value === '__manual__') {
+            const manual = document.getElementById('field-siteUrl-manual')
+            return manual ? manual.value : ''
+        }
+        return select.value
+    }
+    const text = document.getElementById('field-siteUrl-text')
+    return text ? text.value : ''
+}
+
+function onSiteChange(siteUrl) {
+    const site = cachedSites.find(function(s) { return s.siteUrl === siteUrl })
+    if (!site) return
+    const dsEl = document.getElementById('field-dataState')
+    if (dsEl && site.defaultDataState) dsEl.value = site.defaultDataState
+    updateComparePreview()
+}
+
+// ============================================================
+// Tab 2: Basic params
+// ============================================================
+
+function buildDateShortcuts() {
+    const container = document.createElement('div')
+    container.className = 'date-shortcuts'
+    DATE_SHORTCUTS.forEach(function(sc) {
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'date-shortcut-btn'
+        btn.textContent = sc.label
+        btn.addEventListener('click', function() {
+            const dsEl = document.getElementById('field-dataState')
+            const range = dateRangeFromShortcut(sc.days, dsEl ? dsEl.value : 'all')
+            document.getElementById('field-startDate').value = range.startDate
+            document.getElementById('field-endDate').value = range.endDate
+            lastDateShortcut = { label: sc.label, days: sc.days }
+            updateComparePreview()
+        })
+        container.appendChild(btn)
+    })
+    return container
+}
+
+function buildBasicParams(prefill) {
+    const container = el('div', { id: 'basic-params' })
+    container.appendChild(mkField('站点', buildSiteUrlSelect(prefill && prefill.siteUrl)))
+    const dsSelect = document.createElement('select')
+    dsSelect.id = 'field-dataState'
+    ;['final', 'all'].forEach(function(v) {
+        const opt = document.createElement('option')
+        opt.value = v
+        opt.textContent = v
+        dsSelect.appendChild(opt)
+    })
+    if (prefill && prefill.dataState) {
+        dsSelect.value = prefill.dataState
+    } else {
+        const first = cachedSites.length ? cachedSites[0] : null
+        dsSelect.value = (first && first.defaultDataState) ? first.defaultDataState : 'final'
+    }
+    dsSelect.addEventListener('change', updateComparePreview)
+    container.appendChild(mkField('数据状态', dsSelect))
+    container.appendChild(mkField('快捷日期', buildDateShortcuts()))
+    const startInput = document.createElement('input')
+    startInput.id = 'field-startDate'
+    startInput.type = 'date'
+    startInput.value = (prefill && prefill.startDate) ? prefill.startDate : ''
+    startInput.addEventListener('input', function() { lastDateShortcut = null; updateComparePreview() })
+    container.appendChild(mkField('起始日期', startInput))
+    const endInput = document.createElement('input')
+    endInput.id = 'field-endDate'
+    endInput.type = 'date'
+    endInput.value = (prefill && prefill.endDate) ? prefill.endDate : ''
+    endInput.addEventListener('input', function() { lastDateShortcut = null; updateComparePreview() })
+    container.appendChild(mkField('结束日期', endInput))
+    container.appendChild(mkField('维度', buildDimensionsCheckboxes(prefill && prefill.dimensions)))
+    container.appendChild(mkField('最大行数', buildSelectWithCustom({
+        idPrefix: 'rowLimit', options: ROWLIMIT_PRESETS,
+        current: prefill && prefill.rowLimit, customType: 'number', customLabel: '自定义'
+    })))
+    return container
+}
+
+function readBasicParams() {
+    const params = {}
+    params.siteUrl = readSiteUrl()
+    const ds = document.getElementById('field-dataState')
+    if (ds) params.dataState = ds.value
+    const start = document.getElementById('field-startDate')
+    if (start && start.value) params.startDate = start.value
+    const end = document.getElementById('field-endDate')
+    if (end && end.value) params.endDate = end.value
+    params.dimensions = readDimensions()
+    const rl = readSelectWithCustom('rowLimit')
+    if (rl !== '') params.rowLimit = parseInt(rl, 10)
+    return params
+}
+
+// ============================================================
+// Tab 2: Advanced params
+// ============================================================
+
+function buildAdvancedParams(prefill) {
+    const container = el('div', { id: 'advanced-params' })
+    const stSelect = document.createElement('select')
+    stSelect.id = 'field-searchType'
+    ;['web', 'image', 'video', 'news', 'discover', 'googleNews'].forEach(function(v) {
+        const opt = document.createElement('option')
+        opt.value = v
+        opt.textContent = v
+        stSelect.appendChild(opt)
+    })
+    stSelect.value = (prefill && prefill.searchType) ? prefill.searchType : 'web'
+    container.appendChild(mkField('搜索类型', stSelect))
+    const startRowCurrent = (prefill && prefill.startRow != null) ? prefill.startRow : 0
+    container.appendChild(mkField('起始行', buildSelectWithCustom({
+        idPrefix: 'startRow', options: STARTROW_PRESETS,
+        current: startRowCurrent, customType: 'number', customLabel: '自定义'
+    })))
+    const obMetSel = document.createElement('select')
+    obMetSel.id = 'field-orderByMetric'
+    ;['', 'clicks', 'impressions', 'ctr', 'position'].forEach(function(v) {
+        const opt = document.createElement('option')
+        opt.value = v
+        opt.textContent = v === '' ? '(不排序)' : (METRIC_LABELS[v] || v)
+        obMetSel.appendChild(opt)
+    })
+    obMetSel.value = (prefill && prefill.orderBy) ? prefill.orderBy.metric : ''
+    const obDirSel = document.createElement('select')
+    obDirSel.id = 'field-orderByDirection'
+    ;['descending', 'ascending'].forEach(function(v) {
+        const opt = document.createElement('option')
+        opt.value = v
+        opt.textContent = v === 'descending' ? '降序' : '升序'
+        obDirSel.appendChild(opt)
+    })
+    obDirSel.value = (prefill && prefill.orderBy) ? prefill.orderBy.direction : 'descending'
+    const obWrap = document.createElement('span')
+    obWrap.style.cssText = 'display:flex;gap:0.5rem;align-items:center;'
+    obWrap.appendChild(obMetSel)
+    obWrap.appendChild(obDirSel)
+    container.appendChild(mkField('排序', obWrap))
+    container.appendChild(mkField('筛选器（维度）', buildFiltersEditor(prefill && prefill.filters)))
+    container.appendChild(mkField('筛选器（指标-当期）', buildMetricFiltersEditor(
+        'metric-filters', prefill && prefill.metricFilters,
+        '按当期指标筛选，只对已返回的行生效（受最大行数限制）'
+    )))
+    container.appendChild(mkField('筛选器（指标-上期）', buildMetricFiltersEditor(
+        'previous-metric-filters', prefill && prefill.previousMetricFilters,
+        '按上期指标筛选，新词上期值视为 0（如 clicks > 0 可排除新词）'
+    )))
+    return container
+}
+
+function readAdvancedParams() {
+    const params = {}
+    const st = document.getElementById('field-searchType')
+    if (st) params.searchType = st.value
+    const sr = readSelectWithCustom('startRow')
+    if (sr !== '') params.startRow = parseInt(sr, 10)
+    const obMet = document.getElementById('field-orderByMetric')
+    if (obMet && obMet.value) params.orderBy = {
+        metric: obMet.value,
+        direction: document.getElementById('field-orderByDirection').value
+    }
+    params.filters = readFilters()
+    params.metricFilters = readMetricFilters('metric-filters')
+    params.previousMetricFilters = readMetricFilters('previous-metric-filters')
+    return params
+}
+
+function isAdvancedFilled() {
+    const st = document.getElementById('field-searchType')
+    if (st && st.value !== 'web') return true
+    const sr = readSelectWithCustom('startRow')
+    if (sr !== '' && sr !== '0') return true
+    const obMet = document.getElementById('field-orderByMetric')
+    if (obMet && obMet.value) return true
+    if (readFilters().length) return true
+    if (readMetricFilters('metric-filters').length) return true
+    if (readMetricFilters('previous-metric-filters').length) return true
+    return false
+}
+
+// ============================================================
+// Tab 2: Compare preview
+// ============================================================
+
+function updateComparePreview() {
+    const preview = document.getElementById('compare-preview')
+    if (!preview || !compareMode) return
+    const basic = readBasicParams()
+    if (!basic.startDate || !basic.endDate) {
+        preview.innerHTML = '<p class="field-hint">请先设置本期日期</p>'
         return
     }
+    const prev = computePreviousPeriod(basic.startDate, basic.endDate)
+    const site = cachedSites.find(function(s) { return s.siteUrl === basic.siteUrl })
+    const adv = readAdvancedParams()
+    preview.innerHTML = ''
+    preview.appendChild(el('div', { className: 'preview-title', text: '上期（只读）' }))
+    const rows = [
+        ['站点', site ? siteDisplayName(site) : (basic.siteUrl || '—')],
+        ['数据状态', basic.dataState || 'final'],
+        ['周期', prev.startDate + ' ~ ' + prev.endDate],
+        ['维度', (basic.dimensions || []).map(function(d) { return DIMENSION_LABELS[d] || d }).join('、') || '（全部）'],
+        ['最大行数', basic.rowLimit || 1000],
+    ]
+    if (adv.searchType && adv.searchType !== 'web') rows.push(['搜索类型', adv.searchType])
+    if (adv.filters && adv.filters.length) {
+        rows.push(['维度筛选', adv.filters.map(function(f) {
+            return f.dimension + ' ' + f.operator + ' "' + f.expression + '"'
+        }).join(', ')])
+    }
+    rows.forEach(function(r) {
+        const row = document.createElement('div')
+        row.className = 'preview-row'
+        row.appendChild(el('span', { className: 'preview-label', text: r[0] }))
+        row.appendChild(el('span', { className: 'preview-value', text: String(r[1]) }))
+        preview.appendChild(row)
+    })
+}
+
+function toggleCompareMode() {
+    compareMode = !compareMode
+    const btn = document.getElementById('compare-toggle-btn')
+    const preview = document.getElementById('compare-preview')
+    const layout = document.getElementById('params-layout')
+    if (compareMode) {
+        if (btn) btn.classList.add('active')
+        if (preview) preview.hidden = false
+        if (layout) layout.classList.add('compare-mode')
+        updateComparePreview()
+    } else {
+        if (btn) btn.classList.remove('active')
+        if (preview) preview.hidden = true
+        if (layout) layout.classList.remove('compare-mode')
+    }
+}
+
+function determineFn() {
+    if (compareMode) return isAdvancedFilled() ? 'comparePeriodsAdvanced' : 'comparePeriodsSimple'
+    return isAdvancedFilled() ? 'queryPerformanceAdvanced' : 'queryPerformanceSimple'
+}
+
+// ============================================================
+// Tab 2: Query execution
+// ============================================================
+
+async function executeQuery() {
+    const fn = determineFn()
+    const params = Object.assign({}, readBasicParams(), readAdvancedParams())
+    const btn = document.getElementById('query-btn')
+    const resultEl = document.getElementById('result')
+    btn.disabled = true
+    resultEl.textContent = '请求中...'
+    try {
+        const res = await fetch('/api/call', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fn: fn, params: params })
+        })
+        const data = await res.json()
+        renderResult(fn, params, data)
+    } catch (e) {
+        resultEl.textContent = '请求失败: ' + e.message
+    } finally {
+        btn.disabled = false
+    }
+}
+
+// ============================================================
+// Tab 2: Presets
+// ============================================================
+
+async function loadPresets() {
+    const res = await fetch('/api/presets')
+    const data = await res.json()
+    renderPresetsList(data.presets || [])
+}
+
+function renderPresetsList(presets) {
+    const ul = document.getElementById('presets-list')
+    if (!ul) return
+    ul.innerHTML = ''
+    if (!presets.length) {
+        ul.appendChild(el('li', { className: 'result-empty', text: '暂无预设' }))
+        return
+    }
+    presets.forEach(function(preset) {
+        const li = document.createElement('li')
+        const shortcutTag = preset.params && preset.params.dateShortcut
+            ? ' [' + preset.params.dateShortcut.label + ']' : ''
+        li.appendChild(el('span', { text: preset.name + ' (' + preset.fn + ')' + shortcutTag }))
+        const applyBtn = document.createElement('button')
+        applyBtn.type = 'button'
+        applyBtn.textContent = '应用'
+        applyBtn.addEventListener('click', function() { applyPreset(preset) })
+        const deleteBtn = document.createElement('button')
+        deleteBtn.type = 'button'
+        deleteBtn.textContent = '删除'
+        deleteBtn.addEventListener('click', async function() {
+            await fetch('/api/presets/' + preset.id, { method: 'DELETE' })
+            loadPresets()
+        })
+        li.appendChild(applyBtn)
+        li.appendChild(deleteBtn)
+        ul.appendChild(li)
+    })
+}
+
+async function savePreset() {
+    const nameInput = document.getElementById('preset-name')
+    const name = nameInput.value.trim()
+    if (!name) { alert('请输入预设名字'); return }
+    const fn = determineFn()
+    const params = Object.assign({}, readBasicParams(), readAdvancedParams())
+    if (lastDateShortcut) {
+        params.dateShortcut = lastDateShortcut
+        delete params.startDate
+        delete params.endDate
+    }
+    await fetch('/api/presets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, fn: fn, params: params })
+    })
+    nameInput.value = ''
+    loadPresets()
+}
+
+function applyPreset(preset) {
+    const params = Object.assign({}, preset.params)
+    if (params.dateShortcut) {
+        lastDateShortcut = params.dateShortcut
+        const range = dateRangeFromShortcut(params.dateShortcut.days, params.dataState || 'all')
+        params.startDate = range.startDate
+        params.endDate = range.endDate
+    } else {
+        lastDateShortcut = null
+    }
+    const isCompare = preset.fn.indexOf('comparePeriods') === 0
+    if (isCompare !== compareMode) toggleCompareMode()
+    const hasAdv = (params.searchType && params.searchType !== 'web') ||
+        params.orderBy ||
+        (params.filters && params.filters.length) ||
+        (params.metricFilters && params.metricFilters.length) ||
+        (params.previousMetricFilters && params.previousMetricFilters.length)
+    const advDetails = document.getElementById('advanced-details')
+    if (advDetails && hasAdv) advDetails.open = true
+    const basicEl = document.getElementById('basic-params')
+    if (basicEl) basicEl.replaceWith(buildBasicParams(params))
+    const advEl = document.getElementById('advanced-params')
+    if (advEl) advEl.replaceWith(buildAdvancedParams(params))
+    updateComparePreview()
+}
+
+// ============================================================
+// Tab 2: Results
+// ============================================================
+
+function renderResult(fnKey, params, data) {
+    const resultEl = document.getElementById('result')
+    resultEl.textContent = ''
+    if (data.error) { resultEl.textContent = '请求失败: ' + data.error; return }
+    const result = data.result
+    const dims = params.dimensions || []
+    if (fnKey === 'queryPerformanceSimple' || fnKey === 'queryPerformanceAdvanced') {
+        renderRowsTable(resultEl, result, dims)
+    } else if (fnKey === 'comparePeriodsSimple' || fnKey === 'comparePeriodsAdvanced') {
+        renderCompareTable(resultEl, result, dims)
+    } else {
+        resultEl.appendChild(el('pre', { text: JSON.stringify(data, null, 2) }))
+    }
+}
+
+function renderRowsTable(container, rows, dimensions) {
+    if (!rows || !rows.length) { container.appendChild(el('div', { className: 'result-empty', text: '无数据' })); return }
     const table = document.createElement('table')
     table.className = 'result-table'
     const thead = document.createElement('thead')
     const headRow = document.createElement('tr')
-    dimensions.forEach(d => headRow.appendChild(el('th', { text: DIMENSION_LABELS[d] || d })))
-    METRIC_OPTIONS.forEach(m => headRow.appendChild(el('th', { text: METRIC_LABELS[m] })))
+    dimensions.forEach(function(d) { headRow.appendChild(el('th', { text: DIMENSION_LABELS[d] || d })) })
+    METRIC_OPTIONS.forEach(function(m) { headRow.appendChild(el('th', { text: METRIC_LABELS[m] })) })
     thead.appendChild(headRow)
     table.appendChild(thead)
     const tbody = document.createElement('tbody')
-    rows.forEach(row => {
+    rows.forEach(function(row) {
         const tr = document.createElement('tr')
-        ;(row.keys || []).forEach(k => tr.appendChild(el('td', { text: k })))
-        METRIC_OPTIONS.forEach(m => tr.appendChild(el('td', { text: formatMetricValue(m, row[m]) })))
+        ;(row.keys || []).forEach(function(k) { tr.appendChild(el('td', { text: k })) })
+        METRIC_OPTIONS.forEach(function(m) { tr.appendChild(el('td', { text: formatMetricValue(m, row[m]) })) })
         tbody.appendChild(tr)
     })
     table.appendChild(tbody)
@@ -647,37 +872,30 @@ function renderRowsTable(container, rows, dimensions) {
 }
 
 function renderCompareTable(container, result, dimensions) {
-    const meta = el('div', {
-        className: 'result-meta',
-        text: `当期: ${result.currentPeriod.startDate} ~ ${result.currentPeriod.endDate}　对比上期: ${result.previousPeriod.startDate} ~ ${result.previousPeriod.endDate}`
-    })
-    container.appendChild(meta)
-
+    container.appendChild(el('div', { className: 'result-meta',
+        text: '当期: ' + result.currentPeriod.startDate + ' ~ ' + result.currentPeriod.endDate +
+              '　上期: ' + result.previousPeriod.startDate + ' ~ ' + result.previousPeriod.endDate
+    }))
     const rows = result.rows || []
-    if (!rows.length) {
-        container.appendChild(el('div', { className: 'result-empty', text: '无数据' }))
-        return
-    }
-
+    if (!rows.length) { container.appendChild(el('div', { className: 'result-empty', text: '无数据' })); return }
     const table = document.createElement('table')
     table.className = 'result-table'
     const thead = document.createElement('thead')
     const headRow = document.createElement('tr')
-    dimensions.forEach(d => headRow.appendChild(el('th', { text: DIMENSION_LABELS[d] || d })))
-    METRIC_OPTIONS.forEach(m => headRow.appendChild(el('th', { text: METRIC_LABELS[m] })))
+    dimensions.forEach(function(d) { headRow.appendChild(el('th', { text: DIMENSION_LABELS[d] || d })) })
+    METRIC_OPTIONS.forEach(function(m) { headRow.appendChild(el('th', { text: METRIC_LABELS[m] })) })
     thead.appendChild(headRow)
     table.appendChild(thead)
-
     const tbody = document.createElement('tbody')
-    rows.forEach(row => {
+    rows.forEach(function(row) {
         const tr = document.createElement('tr')
         const isNew = !!row.isNew
-        ;(row.keys || []).forEach((k, i) => {
+        ;(row.keys || []).forEach(function(k, i) {
             const td = el('td', { text: k })
             if (i === 0 && isNew) td.appendChild(el('span', { className: 'new-row-badge', text: '新' }))
             tr.appendChild(td)
         })
-        METRIC_OPTIONS.forEach(m => {
+        METRIC_OPTIONS.forEach(function(m) {
             const td = document.createElement('td')
             const cell = el('div', { className: 'metric-cell' })
             cell.appendChild(el('span', { className: 'metric-current', text: formatMetricValue(m, row.current[m]) }))
@@ -698,127 +916,101 @@ function renderCompareTable(container, result, dimensions) {
     container.appendChild(table)
 }
 
-function renderResult(fnKey, params, data) {
-    const resultEl = document.getElementById('result')
-    resultEl.textContent = ''
+// ============================================================
+// Tab 2: Render structure
+// ============================================================
 
-    if (data.error) {
-        resultEl.textContent = '请求失败: ' + data.error
-        return
-    }
-
-    const result = data.result
-
-    if (fnKey === 'listSites') {
-        return renderSitesTable(resultEl, result)
-    }
-    if (fnKey === 'queryPerformanceSimple' || fnKey === 'queryPerformanceAdvanced') {
-        return renderRowsTable(resultEl, result, params.dimensions || [])
-    }
-    if (fnKey === 'comparePeriodsSimple' || fnKey === 'comparePeriodsAdvanced') {
-        return renderCompareTable(resultEl, result, params.dimensions || [])
-    }
-
-    resultEl.appendChild(el('pre', { text: JSON.stringify(data, null, 2) }))
+function renderQueryTab() {
+    const container = document.getElementById('tab-query')
+    container.innerHTML = ''
+    // Presets section
+    const presetsSection = document.createElement('section')
+    presetsSection.id = 'presets-section'
+    presetsSection.appendChild(el('h3', { className: 'section-title', text: '预设' }))
+    presetsSection.appendChild(el('ul', { id: 'presets-list' }))
+    const saveRow = document.createElement('div')
+    saveRow.className = 'actions'
+    const presetNameInput = document.createElement('input')
+    presetNameInput.type = 'text'
+    presetNameInput.id = 'preset-name'
+    presetNameInput.placeholder = '预设名称'
+    const saveBtn = document.createElement('button')
+    saveBtn.type = 'button'
+    saveBtn.textContent = '保存当前为预设'
+    saveBtn.addEventListener('click', savePreset)
+    saveRow.appendChild(presetNameInput)
+    saveRow.appendChild(saveBtn)
+    presetsSection.appendChild(saveRow)
+    container.appendChild(presetsSection)
+    // Params section
+    const paramsSection = document.createElement('section')
+    paramsSection.id = 'params-section'
+    const paramsLayout = el('div', { id: 'params-layout' })
+    const paramsLeft = el('div', { id: 'params-left' })
+    paramsLeft.appendChild(buildBasicParams(null))
+    const advDetails = document.createElement('details')
+    advDetails.id = 'advanced-details'
+    const advSummary = document.createElement('summary')
+    advSummary.textContent = '高级设置'
+    advDetails.appendChild(advSummary)
+    advDetails.appendChild(buildAdvancedParams(null))
+    paramsLeft.appendChild(advDetails)
+    paramsLayout.appendChild(paramsLeft)
+    const comparePreview = el('div', { id: 'compare-preview' })
+    comparePreview.hidden = true
+    paramsLayout.appendChild(comparePreview)
+    paramsSection.appendChild(paramsLayout)
+    const actionsRow = document.createElement('div')
+    actionsRow.className = 'actions'
+    const queryBtn = document.createElement('button')
+    queryBtn.type = 'button'
+    queryBtn.id = 'query-btn'
+    queryBtn.className = 'btn-primary'
+    queryBtn.textContent = '查询'
+    queryBtn.addEventListener('click', executeQuery)
+    const compareBtn = document.createElement('button')
+    compareBtn.type = 'button'
+    compareBtn.id = 'compare-toggle-btn'
+    compareBtn.textContent = '对比查询'
+    compareBtn.addEventListener('click', toggleCompareMode)
+    actionsRow.appendChild(queryBtn)
+    actionsRow.appendChild(compareBtn)
+    paramsSection.appendChild(actionsRow)
+    container.appendChild(paramsSection)
+    // Results
+    container.appendChild(el('div', { id: 'result' }))
 }
 
-async function callFunction() {
-    const fnKey = document.getElementById('fn-select').value
-    const params = collectParams(fnKey)
+// ============================================================
+// Tab management & init
+// ============================================================
 
-    const btn = document.getElementById('call-btn')
-    const resultEl = document.getElementById('result')
-    btn.disabled = true
-    resultEl.textContent = '请求中...'
-    try {
-        const res = await fetch('/api/call', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fn: fnKey, params })
+function initTabs() {
+    document.querySelectorAll('.tab-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active') })
+            btn.classList.add('active')
+            document.querySelectorAll('.tab-content').forEach(function(c) { c.hidden = true })
+            document.getElementById('tab-' + btn.dataset.tab).hidden = false
         })
-        const data = await res.json()
-        renderResult(fnKey, params, data)
-    } catch (e) {
-        resultEl.textContent = '请求失败: ' + e.message
-    } finally {
-        btn.disabled = false
-    }
-}
-
-function renderPresetsList(presets) {
-    const ul = document.getElementById('presets-list')
-    ul.innerHTML = ''
-    for (const preset of presets) {
-        const li = document.createElement('li')
-
-        const label = document.createElement('span')
-        const shortcutTag = preset.params.dateShortcut ? ` [${preset.params.dateShortcut.label}]` : ''
-        label.textContent = `${preset.name} (${preset.fn})${shortcutTag}`
-
-        const applyBtn = document.createElement('button')
-        applyBtn.type = 'button'
-        applyBtn.textContent = '应用'
-        applyBtn.addEventListener('click', () => {
-            document.getElementById('fn-select').value = preset.fn
-            const params = Object.assign({}, preset.params)
-            if (params.dateShortcut) {
-                lastDateShortcut = params.dateShortcut
-                const { startDate, endDate } = dateRangeFromShortcut(params.dateShortcut.days, params.dataState)
-                params.startDate = startDate
-                params.endDate = endDate
-            }
-            renderForm(preset.fn, params)
-        })
-
-        const deleteBtn = document.createElement('button')
-        deleteBtn.type = 'button'
-        deleteBtn.textContent = '删除'
-        deleteBtn.addEventListener('click', async () => {
-            await fetch('/api/presets/' + preset.id, { method: 'DELETE' })
-            loadPresets()
-        })
-
-        li.appendChild(label)
-        li.appendChild(applyBtn)
-        li.appendChild(deleteBtn)
-        ul.appendChild(li)
-    }
-}
-
-async function loadPresets() {
-    const res = await fetch('/api/presets')
-    const data = await res.json()
-    renderPresetsList(data.presets || [])
-}
-
-async function savePreset() {
-    const fnKey = document.getElementById('fn-select').value
-    const nameInput = document.getElementById('preset-name')
-    const name = nameInput.value.trim()
-    if (!name) {
-        alert('请输入预设名字')
-        return
-    }
-    const params = collectParams(fnKey)
-    if (lastDateShortcut) {
-        params.dateShortcut = lastDateShortcut
-        delete params.startDate
-        delete params.endDate
-    }
-    await fetch('/api/presets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, fn: fnKey, params })
     })
-    nameInput.value = ''
+}
+
+async function init() {
+    initTabs()
+    renderSitesTab()
+    renderQueryTab()
+    try {
+        await loadCachedSites()
+        renderSitesConfigTable()
+        const basicEl = document.getElementById('basic-params')
+        if (basicEl) basicEl.replaceWith(buildBasicParams(null))
+        const siteUrl = readSiteUrl()
+        if (siteUrl) onSiteChange(siteUrl)
+    } catch (e) {
+        console.error('Failed to load cached sites:', e)
+    }
     loadPresets()
 }
 
-document.getElementById('refresh-sites-btn').addEventListener('click', refreshSites)
-document.getElementById('fn-select').addEventListener('change', e => renderForm(e.target.value))
-document.getElementById('call-btn').addEventListener('click', callFunction)
-document.getElementById('save-preset-btn').addEventListener('click', savePreset)
-
-renderForm('listSites')
-loadCachedSites()
-loadPresets()
+init()
