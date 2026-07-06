@@ -13,22 +13,6 @@ async function getWebmasters() {
     return webmasters
 }
 
-function applyMetricFilters(rows, metricFilters) {
-    if (!metricFilters || !metricFilters.length) return rows
-    return rows.filter(row => metricFilters.every(f => {
-        const val = row[f.metric]
-        switch (f.operator) {
-            case '>': return val > f.value
-            case '>=': return val >= f.value
-            case '<': return val < f.value
-            case '<=': return val <= f.value
-            case '=': return val === f.value
-            case '!=': return val !== f.value
-            default: return true
-        }
-    }))
-}
-
 async function listSites() {
     const wm = await getWebmasters()
     const res = await wm.sites.list()
@@ -44,6 +28,9 @@ async function queryPerformanceSimple({ siteUrl, dataState = 'all', startDate, e
     return res.data.rows || []
 }
 
+// dimensionFilterGroups: raw GSC format (array of groups, OR between groups, AND within group).
+// If provided, takes precedence over filters.
+// filters: shorthand for a single AND group (the common case).
 async function queryPerformanceAdvanced({
     siteUrl,
     dataState = 'all',
@@ -55,16 +42,20 @@ async function queryPerformanceAdvanced({
     startRow = 0,
     orderBy,
     filters = [],
-    metricFilters = []
+    dimensionFilterGroups
 }) {
     const wm = await getWebmasters()
     const requestBody = { startDate, endDate, dimensions, searchType, rowLimit, startRow, dataState }
-    if (filters.length) {
+
+    if (dimensionFilterGroups) {
+        if (dimensionFilterGroups.length) requestBody.dimensionFilterGroups = dimensionFilterGroups
+    } else if (filters.length) {
         requestBody.dimensionFilterGroups = [{ groupType: 'and', filters }]
     }
+
     const res = await wm.searchanalytics.query({ siteUrl, requestBody })
     let rows = res.data.rows || []
-    rows = applyMetricFilters(rows, metricFilters)
+
     if (orderBy && orderBy.metric) {
         const dir = orderBy.direction === 'ascending' ? 1 : -1
         rows = rows.slice().sort((a, b) => (a[orderBy.metric] - b[orderBy.metric]) * dir)

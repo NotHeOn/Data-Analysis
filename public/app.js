@@ -435,7 +435,7 @@ function renderForm(fnKey, prefill) {
             const labelText = document.createElement('span')
             labelText.textContent = '筛选器（指标 - 上一期）'
             wrapper.appendChild(labelText)
-            const hint = '仅按上一周期的原始数值筛选，要求“上期也必须达到门槛”；一旦设置，上期不达标（含上期无数据）的行会被整行剔除，而不是显示为“新出现”'
+            const hint = '仅对上期有数据的关键词生效（Group A）；真正的新词（上期无数据）不受此筛选影响，由当期指标筛选器单独决定是否保留'
             wrapper.appendChild(buildMetricFiltersEditor('previous-metric-filters', prefill && prefill.previousMetricFilters, hint))
             form.appendChild(wrapper)
             continue

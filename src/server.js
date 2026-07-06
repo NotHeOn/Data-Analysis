@@ -3,7 +3,8 @@ const http = require('http')
 const fs = require('fs')
 const path = require('path')
 const { URL } = require('url')
-const tool = require('./adapters/gsc')
+const gsc = require('./adapters/gsc')
+const query = require('./services/query')
 const compare = require('./services/compare')
 
 const PORT = 3300
@@ -12,7 +13,12 @@ const dataDir = path.join(__dirname, '../data')
 const presetsPath = path.join(dataDir, 'presets.json')
 const sitesPath = path.join(dataDir, 'sites.json')
 
-const FN_MAP = { ...tool, ...compare }
+const FN_MAP = {
+    listSites: gsc.listSites,
+    queryPerformanceSimple: gsc.queryPerformanceSimple,
+    queryPerformanceAdvanced: query.queryPerformanceAdvanced,
+    ...compare
+}
 
 const CONTENT_TYPES = {
     '.html': 'text/html; charset=utf-8',
@@ -113,7 +119,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (req.method === 'POST' && pathname === '/api/sites/refresh') {
-            const sites = await tool.listSites()
+            const sites = await gsc.listSites()
             writeJsonFile(sitesPath, sites)
             return sendJson(res, 200, { sites })
         }
