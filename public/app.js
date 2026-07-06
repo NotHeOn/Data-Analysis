@@ -33,7 +33,7 @@ const FUNCTIONS = {
     queryPerformanceSimple: { fields: ['siteUrl', 'dataState', 'startDate', 'endDate', 'dimensions', 'rowLimit'] },
     queryPerformanceAdvanced: { fields: ['siteUrl', 'dataState', 'startDate', 'endDate', 'dimensions', 'searchType', 'rowLimit', 'startRow', 'orderByMetric', 'orderByDirection', 'filters', 'metricFilters'] },
     comparePeriodsSimple: { fields: ['siteUrl', 'dataState', 'startDate', 'endDate', 'dimensions', 'rowLimit'] },
-    comparePeriodsAdvanced: { fields: ['siteUrl', 'dataState', 'startDate', 'endDate', 'dimensions', 'searchType', 'rowLimit', 'startRow', 'orderByMetric', 'orderByDirection', 'filters', 'metricFilters', 'previousNotExists', 'previousMetricFilters'] }
+    comparePeriodsAdvanced: { fields: ['siteUrl', 'dataState', 'startDate', 'endDate', 'dimensions', 'searchType', 'rowLimit', 'startRow', 'orderByMetric', 'orderByDirection', 'filters', 'metricFilters', 'previousMetricFilters'] }
 }
 
 let cachedSites = []
@@ -418,24 +418,11 @@ function renderForm(fnKey, prefill) {
             continue
         }
 
-        if (key === 'previousNotExists') {
-            const labelText = document.createElement('span')
-            labelText.textContent = '仅显示新词（上期无数据）'
-            wrapper.appendChild(labelText)
-            const checkbox = document.createElement('input')
-            checkbox.type = 'checkbox'
-            checkbox.id = 'field-previousNotExists'
-            checkbox.checked = !!(prefill && prefill.previousNotExists)
-            wrapper.appendChild(checkbox)
-            form.appendChild(wrapper)
-            continue
-        }
-
         if (key === 'previousMetricFilters') {
             const labelText = document.createElement('span')
             labelText.textContent = '筛选器（指标 - 上一期）'
             wrapper.appendChild(labelText)
-            const hint = '仅对上期有数据的关键词生效（Group A）；真正的新词（上期无数据）不受此筛选影响，由当期指标筛选器单独决定是否保留'
+            const hint = '按上一周期的指标数值筛选，新词的上期值视为 0（例如设置 clicks > 0 可排除新词和上期无点击的词）'
             wrapper.appendChild(buildMetricFiltersEditor('previous-metric-filters', prefill && prefill.previousMetricFilters, hint))
             form.appendChild(wrapper)
             continue
@@ -518,11 +505,6 @@ function collectParams(fnKey) {
         }
         if (key === 'metricFilters') {
             params.metricFilters = readMetricFilters('metric-filters')
-            continue
-        }
-        if (key === 'previousNotExists') {
-            const cb = document.getElementById('field-previousNotExists')
-            if (cb && cb.checked) params.previousNotExists = true
             continue
         }
         if (key === 'previousMetricFilters') {
@@ -689,7 +671,7 @@ function renderCompareTable(container, result, dimensions) {
     const tbody = document.createElement('tbody')
     rows.forEach(row => {
         const tr = document.createElement('tr')
-        const isNew = !(row.previous && row.previous.keys)
+        const isNew = !!row.isNew
         ;(row.keys || []).forEach((k, i) => {
             const td = el('td', { text: k })
             if (i === 0 && isNew) td.appendChild(el('span', { className: 'new-row-badge', text: '新' }))
@@ -699,12 +681,15 @@ function renderCompareTable(container, result, dimensions) {
             const td = document.createElement('td')
             const cell = el('div', { className: 'metric-cell' })
             cell.appendChild(el('span', { className: 'metric-current', text: formatMetricValue(m, row.current[m]) }))
-            if (!isNew) {
+            if (isNew && m === 'position') {
+                cell.appendChild(el('span', { className: 'metric-delta neutral', text: '—' }))
+            } else {
                 const deltaText = formatDelta(m, row.delta[m])
                 if (deltaText) cell.appendChild(el('span', { className: 'metric-delta ' + deltaClass(m, row.delta[m]), text: deltaText }))
             }
             td.appendChild(cell)
-            if (!isNew) td.appendChild(el('div', { className: 'metric-previous', text: '上期 ' + formatMetricValue(m, row.previous[m]) }))
+            const prevDisplay = isNew && m === 'position' ? '—' : formatMetricValue(m, row.previous ? row.previous[m] : 0)
+            td.appendChild(el('div', { className: 'metric-previous', text: '上期 ' + prevDisplay }))
             tr.appendChild(td)
         })
         tbody.appendChild(tr)

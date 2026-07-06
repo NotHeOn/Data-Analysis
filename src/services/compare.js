@@ -33,10 +33,10 @@ function diffRows(currentRows, previousRows) {
     const metrics = ['clicks', 'impressions', 'ctr', 'position']
     const prevMap = new Map(previousRows.map(r => [JSON.stringify(r.keys || []), r]))
     return currentRows.map(cur => {
-        const prev = prevMap.get(JSON.stringify(cur.keys || [])) || {}
+        const prev = prevMap.get(JSON.stringify(cur.keys || []))
         const delta = {}
-        for (const m of metrics) delta[m] = (cur[m] || 0) - (prev[m] || 0)
-        return { keys: cur.keys, current: cur, previous: prev, delta }
+        for (const m of metrics) delta[m] = (cur[m] || 0) - (prev ? (prev[m] || 0) : 0)
+        return { keys: cur.keys, current: cur, previous: prev || null, delta }
     })
 }
 
@@ -78,13 +78,10 @@ async function comparePeriodsSimple({ siteUrl, dataState = 'all', startDate, end
 // Compare algorithm:
 // 1. Query current period (rowLimit rows)
 // 2. Query previous period (same rowLimit)
-// 3. Find current rows absent from previous results
-// 4. Verify those rows against the previous period (may have been cut off by rowLimit)
-// 5. Merge verified rows into previous period data for a complete picture
-// 6. Apply filters per group:
-//    Group A (previous data exists)  → apply previousMetricFilters on previous values
-//    Group B (truly new, no prev)    → skip previousMetricFilters; apply only metricFilters
-//    metricFilters (current period)  → applied to ALL rows after group split
+// 3. Find current rows absent from previous batch → verify individually against previous period
+// 4. Merge verified rows; rows still missing after verification are new (synthesized as zeros)
+// 5. All rows now have a previous object; apply metricFilters and previousMetricFilters uniformly
+//    (new words have previous = zeros, so previousMetricFilters: [clicks > 0] naturally excludes them)
 async function comparePeriodsAdvanced({
     siteUrl,
     dataState = 'all',
@@ -97,49 +94,46 @@ async function comparePeriodsAdvanced({
     orderBy,
     filters = [],
     metricFilters = [],
-    previousNotExists = false,
     previousMetricFilters = []
 }) {
     const previous = previousPeriod(startDate, endDate)
 
-    // Steps 1 & 2
     const [currentRows, prevRows] = await Promise.all([
         queryPerformanceAdvanced({ siteUrl, dataState, startDate, endDate, dimensions, searchType, rowLimit, startRow, orderBy, filters }),
         queryPerformanceAdvanced({ siteUrl, dataState, startDate: previous.startDate, endDate: previous.endDate, dimensions, searchType, rowLimit, startRow, orderBy, filters })
     ])
 
-    // Step 3
     const prevKeySet = new Set(prevRows.map(r => JSON.stringify(r.keys || [])))
     const missingRows = currentRows.filter(r => !prevKeySet.has(JSON.stringify(r.keys || [])))
 
-    // Step 4
     const verifiedRows = await verifyMissingRows({
         siteUrl, dataState,
         startDate: previous.startDate, endDate: previous.endDate,
         dimensions, missingRows, userFilters: filters, searchType
     })
 
-    // Step 5
     const completePrevRows = [...prevRows, ...verifiedRows]
 
-    // Diff
-    let rows = diffRows(currentRows, completePrevRows)
+    // Track which keys are truly new (no previous data even after verification)
+    const completePrevKeySet = new Set(completePrevRows.map(r => JSON.stringify(r.keys || [])))
+    const newKeySet = new Set(
+        missingRows
+            .filter(r => !completePrevKeySet.has(JSON.stringify(r.keys || [])))
+            .map(r => JSON.stringify(r.keys || []))
+    )
 
-    // Step 6a: group-level filter
-    rows = rows.filter(r => {
-        const hasPrev = !!(r.previous && r.previous.keys)
-        if (hasPrev) {
-            if (previousNotExists) return false
-            return applyMetricFilters([r.previous], previousMetricFilters).length > 0
-        }
-        // Group B (truly new): previousMetricFilters doesn't apply
-        return true
-    })
+    // Synthesize zero rows for new words so all rows have a uniform previous object
+    const zeroRows = missingRows
+        .filter(r => newKeySet.has(JSON.stringify(r.keys || [])))
+        .map(r => ({ keys: r.keys, clicks: 0, impressions: 0, ctr: 0, position: 0 }))
 
-    // Step 6b: current-period metric filter applies to all remaining rows
-    if (metricFilters.length) {
-        rows = rows.filter(r => applyMetricFilters([r.current], metricFilters).length > 0)
-    }
+    let rows = diffRows(currentRows, [...completePrevRows, ...zeroRows])
+
+    // Mark new rows and apply uniform filters
+    rows = rows.map(r => newKeySet.has(JSON.stringify(r.keys || [])) ? { ...r, isNew: true } : r)
+
+    if (metricFilters.length) rows = rows.filter(r => applyMetricFilters([r.current], metricFilters).length > 0)
+    if (previousMetricFilters.length) rows = rows.filter(r => applyMetricFilters([r.previous], previousMetricFilters).length > 0)
 
     return { currentPeriod: { startDate, endDate }, previousPeriod: previous, rows }
 }
