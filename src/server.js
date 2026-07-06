@@ -3,8 +3,8 @@ const http = require('http')
 const fs = require('fs')
 const path = require('path')
 const { URL } = require('url')
-const tool = require('./tool')
-const compare = require('./compare')
+const tool = require('./adapters/gsc')
+const compare = require('./services/compare')
 
 const PORT = 3300
 const publicDir = path.join(__dirname, '../public')

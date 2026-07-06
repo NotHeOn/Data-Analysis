@@ -1,5 +1,5 @@
 'use strict'
-const { queryPerformanceSimple, queryPerformanceAdvanced } = require('./tool')
+const { queryPerformanceSimple, queryPerformanceAdvanced } = require('../adapters/gsc')
 
 function previousPeriod(startDate, endDate) {
     const start = new Date(startDate + 'T00:00:00Z')
@@ -26,7 +26,6 @@ function diffRows(currentRows, previousRows) {
     })
 }
 
-// 4. 简单周期对比查询
 async function comparePeriodsSimple({ siteUrl, dataState = 'all', startDate, endDate, dimensions = [], rowLimit = 1000 }) {
     const previous = previousPeriod(startDate, endDate)
     const [currentRows, previousRows] = await Promise.all([
@@ -40,15 +39,6 @@ async function comparePeriodsSimple({ siteUrl, dataState = 'all', startDate, end
     }
 }
 
-// 5. 复杂周期对比查询
-// 维度筛选器 (filters) 用于圈定"比较哪些行"，两期共用；
-// 指标筛选器分两组，各自只作用于对应那一期的原始数值：
-//   - metricFilters：当期门槛（例如"这期 clicks 必须大于 X"）
-//   - previousMetricFilters：上一期门槛（例如"上期 clicks 也必须大于 Y"，
-//     用于要求"已有一定基础再叠加增长"，排除上期几乎为零、应继续观察养成的新词）
-// 一旦指定了 previousMetricFilters，凡是在上一期查询里没有通过门槛（含压根不存在）的行，
-// 会被整行剔除，而不是像默认情况那样以 previous:{} 的"新行"形式保留——
-// 因为这种场景下"没上期数据"和"上期不达标"应该被同样对待：先不动它。
 async function comparePeriodsAdvanced({
     siteUrl,
     dataState = 'all',
@@ -79,7 +69,4 @@ async function comparePeriodsAdvanced({
     }
 }
 
-module.exports = {
-    comparePeriodsSimple,
-    comparePeriodsAdvanced
-}
+module.exports = { comparePeriodsSimple, comparePeriodsAdvanced }

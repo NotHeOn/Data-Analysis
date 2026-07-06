@@ -1,5 +1,5 @@
 'use strict'
-const { authenticate } = require('./auth')
+const { authenticate } = require('../auth')
 const { google } = require('googleapis')
 
 const SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
@@ -29,14 +29,12 @@ function applyMetricFilters(rows, metricFilters) {
     }))
 }
 
-// 1. 查询所有站点基本信息
 async function listSites() {
     const wm = await getWebmasters()
     const res = await wm.sites.list()
     return res.data.siteEntry || []
 }
 
-// 2. 简单查询站点表现情况
 async function queryPerformanceSimple({ siteUrl, dataState = 'all', startDate, endDate, dimensions = [], rowLimit = 1000 }) {
     const wm = await getWebmasters()
     const res = await wm.searchanalytics.query({
@@ -46,7 +44,6 @@ async function queryPerformanceSimple({ siteUrl, dataState = 'all', startDate, e
     return res.data.rows || []
 }
 
-// 3. 复杂查询站点表现情况
 async function queryPerformanceAdvanced({
     siteUrl,
     dataState = 'all',
@@ -75,8 +72,4 @@ async function queryPerformanceAdvanced({
     return rows
 }
 
-module.exports = {
-    listSites,
-    queryPerformanceSimple,
-    queryPerformanceAdvanced
-}
+module.exports = { listSites, queryPerformanceSimple, queryPerformanceAdvanced }
