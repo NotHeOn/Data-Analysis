@@ -33,10 +33,11 @@ const FUNCTIONS = {
     queryPerformanceSimple: { fields: ['siteUrl', 'dataState', 'startDate', 'endDate', 'dimensions', 'rowLimit'] },
     queryPerformanceAdvanced: { fields: ['siteUrl', 'dataState', 'startDate', 'endDate', 'dimensions', 'searchType', 'rowLimit', 'startRow', 'orderByMetric', 'orderByDirection', 'filters', 'metricFilters'] },
     comparePeriodsSimple: { fields: ['siteUrl', 'dataState', 'startDate', 'endDate', 'dimensions', 'rowLimit'] },
-    comparePeriodsAdvanced: { fields: ['siteUrl', 'dataState', 'startDate', 'endDate', 'dimensions', 'searchType', 'rowLimit', 'startRow', 'orderByMetric', 'orderByDirection', 'filters', 'metricFilters', 'previousMetricFilters'] }
+    comparePeriodsAdvanced: { fields: ['siteUrl', 'dataState', 'startDate', 'endDate', 'dimensions', 'searchType', 'rowLimit', 'startRow', 'orderByMetric', 'orderByDirection', 'filters', 'metricFilters', 'previousNotExists', 'previousMetricFilters'] }
 }
 
 let cachedSites = []
+let lastDateShortcut = null
 
 function paramsToFieldValue(key, params) {
     if (key === 'orderByMetric') return params.orderBy ? params.orderBy.metric : ''
@@ -334,15 +335,19 @@ function readMetricFilters(idPrefix) {
     return metricFilters
 }
 
-function calcDateRange(days) {
-    const dataStateEl = document.getElementById('field-dataState')
-    const lagDays = (dataStateEl && dataStateEl.value === 'final') ? 3 : 1
+function dateRangeFromShortcut(days, dataState) {
+    const lagDays = dataState === 'final' ? 3 : 1
     const end = new Date()
     end.setDate(end.getDate() - lagDays)
     const start = new Date(end)
     start.setDate(end.getDate() - (days - 1))
     const fmt = d => d.toISOString().slice(0, 10)
     return { startDate: fmt(start), endDate: fmt(end) }
+}
+
+function calcDateRange(days) {
+    const dataStateEl = document.getElementById('field-dataState')
+    return dateRangeFromShortcut(days, dataStateEl ? dataStateEl.value : 'all')
 }
 
 function buildDateShortcuts() {
@@ -357,6 +362,7 @@ function buildDateShortcuts() {
             const { startDate, endDate } = calcDateRange(days)
             document.getElementById('field-startDate').value = startDate
             document.getElementById('field-endDate').value = endDate
+            lastDateShortcut = { label, days }
         })
         container.appendChild(btn)
     }
@@ -408,6 +414,19 @@ function renderForm(fnKey, prefill) {
                 ? '仅按当前周期（不含对比的上一周期）的原始数值筛选，且只对本次已返回的这一页结果生效（受最大返回行数限制）'
                 : '仅对本次已返回的这一页结果生效（受最大返回行数限制），不是全量筛选'
             wrapper.appendChild(buildMetricFiltersEditor('metric-filters', prefill && prefill.metricFilters, hint))
+            form.appendChild(wrapper)
+            continue
+        }
+
+        if (key === 'previousNotExists') {
+            const labelText = document.createElement('span')
+            labelText.textContent = '仅显示新词（上期无数据）'
+            wrapper.appendChild(labelText)
+            const checkbox = document.createElement('input')
+            checkbox.type = 'checkbox'
+            checkbox.id = 'field-previousNotExists'
+            checkbox.checked = !!(prefill && prefill.previousNotExists)
+            wrapper.appendChild(checkbox)
             form.appendChild(wrapper)
             continue
         }
@@ -469,6 +488,9 @@ function renderForm(fnKey, prefill) {
             input.type = def.type
             input.placeholder = def.placeholder || ''
             input.value = fieldValue(key, prefill, '')
+            if (key === 'startDate' || key === 'endDate') {
+                input.addEventListener('input', () => { lastDateShortcut = null })
+            }
             wrapper.appendChild(input)
         }
         form.appendChild(wrapper)
@@ -496,6 +518,11 @@ function collectParams(fnKey) {
         }
         if (key === 'metricFilters') {
             params.metricFilters = readMetricFilters('metric-filters')
+            continue
+        }
+        if (key === 'previousNotExists') {
+            const cb = document.getElementById('field-previousNotExists')
+            if (cb && cb.checked) params.previousNotExists = true
             continue
         }
         if (key === 'previousMetricFilters') {
@@ -672,11 +699,12 @@ function renderCompareTable(container, result, dimensions) {
             const td = document.createElement('td')
             const cell = el('div', { className: 'metric-cell' })
             cell.appendChild(el('span', { className: 'metric-current', text: formatMetricValue(m, row.current[m]) }))
-            const deltaText = formatDelta(m, row.delta[m])
-            if (deltaText) cell.appendChild(el('span', { className: 'metric-delta ' + deltaClass(m, row.delta[m]), text: deltaText }))
+            if (!isNew) {
+                const deltaText = formatDelta(m, row.delta[m])
+                if (deltaText) cell.appendChild(el('span', { className: 'metric-delta ' + deltaClass(m, row.delta[m]), text: deltaText }))
+            }
             td.appendChild(cell)
-            const prevText = isNew ? '上期无数据' : ('上期 ' + formatMetricValue(m, row.previous[m]))
-            td.appendChild(el('div', { className: 'metric-previous', text: prevText }))
+            if (!isNew) td.appendChild(el('div', { className: 'metric-previous', text: '上期 ' + formatMetricValue(m, row.previous[m]) }))
             tr.appendChild(td)
         })
         tbody.appendChild(tr)
@@ -739,14 +767,22 @@ function renderPresetsList(presets) {
         const li = document.createElement('li')
 
         const label = document.createElement('span')
-        label.textContent = `${preset.name} (${preset.fn})`
+        const shortcutTag = preset.params.dateShortcut ? ` [${preset.params.dateShortcut.label}]` : ''
+        label.textContent = `${preset.name} (${preset.fn})${shortcutTag}`
 
         const applyBtn = document.createElement('button')
         applyBtn.type = 'button'
         applyBtn.textContent = '应用'
         applyBtn.addEventListener('click', () => {
             document.getElementById('fn-select').value = preset.fn
-            renderForm(preset.fn, preset.params)
+            const params = Object.assign({}, preset.params)
+            if (params.dateShortcut) {
+                lastDateShortcut = params.dateShortcut
+                const { startDate, endDate } = dateRangeFromShortcut(params.dateShortcut.days, params.dataState)
+                params.startDate = startDate
+                params.endDate = endDate
+            }
+            renderForm(preset.fn, params)
         })
 
         const deleteBtn = document.createElement('button')
@@ -779,6 +815,11 @@ async function savePreset() {
         return
     }
     const params = collectParams(fnKey)
+    if (lastDateShortcut) {
+        params.dateShortcut = lastDateShortcut
+        delete params.startDate
+        delete params.endDate
+    }
     await fetch('/api/presets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

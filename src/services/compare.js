@@ -51,15 +51,18 @@ async function comparePeriodsAdvanced({
     orderBy,
     filters = [],
     metricFilters = [],
+    previousNotExists = false,
     previousMetricFilters = []
 }) {
     const previous = previousPeriod(startDate, endDate)
     const [currentRows, previousRows] = await Promise.all([
         queryPerformanceAdvanced({ siteUrl, dataState, startDate, endDate, dimensions, searchType, rowLimit, startRow, orderBy, filters, metricFilters }),
-        queryPerformanceAdvanced({ siteUrl, dataState, startDate: previous.startDate, endDate: previous.endDate, dimensions, searchType, rowLimit, startRow, orderBy, filters, metricFilters: previousMetricFilters })
+        queryPerformanceAdvanced({ siteUrl, dataState, startDate: previous.startDate, endDate: previous.endDate, dimensions, searchType, rowLimit, startRow, orderBy, filters, metricFilters: previousNotExists ? [] : previousMetricFilters })
     ])
     let rows = diffRows(currentRows, previousRows)
-    if (previousMetricFilters.length) {
+    if (previousNotExists) {
+        rows = rows.filter(r => !(r.previous && r.previous.keys))
+    } else if (previousMetricFilters.length) {
         rows = rows.filter(r => r.previous && r.previous.keys)
     }
     return {
