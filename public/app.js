@@ -682,15 +682,14 @@ function updateComparePreview() {
         preview.innerHTML = '<p class="field-hint">请先设置本期日期</p>'
         return
     }
-    const prev = computePreviousPeriod(basic.startDate, basic.endDate)
     const site = cachedSites.find(function(s) { return s.siteUrl === basic.siteUrl })
     const adv = readAdvancedParams()
     preview.innerHTML = ''
-    preview.appendChild(el('div', { className: 'preview-title', text: '上期（只读）' }))
+    preview.appendChild(el('div', { className: 'preview-title', text: '本期（预览）' }))
     const rows = [
         ['站点', site ? siteDisplayName(site) : (basic.siteUrl || '—')],
         ['数据状态', basic.dataState || 'final'],
-        ['周期', prev.startDate + ' ~ ' + prev.endDate],
+        ['周期', basic.startDate + ' ~ ' + basic.endDate],
         ['维度', (basic.dimensions || []).map(function(d) { return DIMENSION_LABELS[d] || d }).join('、') || '（全部）'],
         ['最大行数', basic.rowLimit || 1000],
     ]
