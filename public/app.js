@@ -6,6 +6,13 @@ const ROWLIMIT_PRESETS = [10, 25, 50, 100, 250, 500, 1000, 2000, 5000]
 const STARTROW_PRESETS = [0, 25, 50, 100, 250, 500, 1000]
 const METRIC_OPTIONS = ['clicks', 'impressions', 'ctr', 'position']
 const METRIC_OPERATORS = ['>', '>=', '<', '<=', '=', '!=']
+const DATE_SHORTCUTS = [
+    { label: '近3天',  days: 3  },
+    { label: '近7天',  days: 7  },
+    { label: '近14天', days: 14 },
+    { label: '近28天', days: 28 },
+    { label: '近90天', days: 90 },
+]
 
 const DIMENSION_LABELS = {
     query: '搜索词', page: '页面', country: '国家', device: '设备', date: '日期', searchAppearance: '搜索样式'
@@ -327,6 +334,35 @@ function readMetricFilters(idPrefix) {
     return metricFilters
 }
 
+function calcDateRange(days) {
+    const dataStateEl = document.getElementById('field-dataState')
+    const lagDays = (dataStateEl && dataStateEl.value === 'final') ? 3 : 1
+    const end = new Date()
+    end.setDate(end.getDate() - lagDays)
+    const start = new Date(end)
+    start.setDate(end.getDate() - (days - 1))
+    const fmt = d => d.toISOString().slice(0, 10)
+    return { startDate: fmt(start), endDate: fmt(end) }
+}
+
+function buildDateShortcuts() {
+    const container = document.createElement('div')
+    container.className = 'date-shortcuts'
+    for (const { label, days } of DATE_SHORTCUTS) {
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'date-shortcut-btn'
+        btn.textContent = label
+        btn.addEventListener('click', () => {
+            const { startDate, endDate } = calcDateRange(days)
+            document.getElementById('field-startDate').value = startDate
+            document.getElementById('field-endDate').value = endDate
+        })
+        container.appendChild(btn)
+    }
+    return container
+}
+
 function renderForm(fnKey, prefill) {
     const form = document.getElementById('param-form')
     form.innerHTML = ''
@@ -399,6 +435,16 @@ function renderForm(fnKey, prefill) {
             }))
             form.appendChild(wrapper)
             continue
+        }
+
+        if (key === 'startDate' && fields.includes('endDate')) {
+            const shortcutWrapper = document.createElement('div')
+            shortcutWrapper.className = 'field'
+            const shortcutLabel = document.createElement('span')
+            shortcutLabel.textContent = '快捷日期'
+            shortcutWrapper.appendChild(shortcutLabel)
+            shortcutWrapper.appendChild(buildDateShortcuts())
+            form.appendChild(shortcutWrapper)
         }
 
         const def = FIELD_DEFS[key]
