@@ -88,6 +88,27 @@ function formatKey(dim, value) {
     return value
 }
 
+function normalizeCountryExpression(value) {
+    if (!value) return value
+    const lower = value.toLowerCase()
+    if (COUNTRY_NAMES[lower]) return lower
+    const entry = Object.entries(COUNTRY_NAMES).find(function(e) { return e[1] === value })
+    return entry ? entry[0] : value
+}
+
+function ensureCountryDatalist() {
+    if (document.getElementById('country-datalist')) return
+    const dl = document.createElement('datalist')
+    dl.id = 'country-datalist'
+    Object.keys(COUNTRY_NAMES).forEach(function(code) {
+        const opt = document.createElement('option')
+        opt.value = code
+        opt.textContent = COUNTRY_NAMES[code]
+        dl.appendChild(opt)
+    })
+    document.body.appendChild(dl)
+}
+
 // --- Date helpers ---
 
 function dateRangeFromShortcut(days, dataState) {
@@ -209,12 +230,25 @@ function buildFiltersEditor(currentFilters) {
         const exprInput = document.createElement('input')
         exprInput.type = 'text'
         exprInput.className = 'filter-expression'
-        exprInput.placeholder = '筛选值，如 /blog/ 或 US'
         if (filter && filter.expression != null) exprInput.value = filter.expression
+        function applyDimMode(dim) {
+            if (dim === 'country') {
+                ensureCountryDatalist()
+                exprInput.setAttribute('list', 'country-datalist')
+                exprInput.placeholder = '输入国家名或代码'
+            } else {
+                exprInput.removeAttribute('list')
+                exprInput.placeholder = '筛选值'
+            }
+        }
+        applyDimMode(dimSel.value)
+        dimSel.addEventListener('change', function() { applyDimMode(dimSel.value); exprInput.value = ''; updateComparePreview() })
+        opSel.addEventListener('change', updateComparePreview)
+        exprInput.addEventListener('input', updateComparePreview)
         const rmBtn = document.createElement('button')
         rmBtn.type = 'button'
         rmBtn.textContent = '删除'
-        rmBtn.addEventListener('click', function() { row.remove() })
+        rmBtn.addEventListener('click', function() { row.remove(); updateComparePreview() })
         row.appendChild(dimSel)
         row.appendChild(opSel)
         row.appendChild(exprInput)
@@ -234,12 +268,13 @@ function readFilters() {
     const rows = document.querySelectorAll('#filters-rows .filter-row')
     const filters = []
     rows.forEach(function(row) {
-        const expression = row.querySelector('.filter-expression').value
-        if (expression !== '') filters.push({
-            dimension: row.querySelector('.filter-dimension').value,
-            operator: row.querySelector('.filter-operator').value,
-            expression: expression
-        })
+        const dimEl = row.querySelector('.filter-dimension')
+        const dim = dimEl ? dimEl.value : ''
+        let expression = row.querySelector('.filter-expression').value.trim()
+        if (expression !== '') {
+            if (dim === 'country') expression = normalizeCountryExpression(expression)
+            filters.push({ dimension: dim, operator: row.querySelector('.filter-operator').value, expression: expression })
+        }
     })
     return filters
 }
@@ -277,10 +312,13 @@ function buildMetricFiltersEditor(idPrefix, currentFilters, hintText) {
         valInput.className = 'metric-filter-value filter-expression'
         valInput.placeholder = '数值'
         if (filter && filter.value != null) valInput.value = filter.value
+        metSel.addEventListener('change', updateComparePreview)
+        opSel.addEventListener('change', updateComparePreview)
+        valInput.addEventListener('input', updateComparePreview)
         const rmBtn = document.createElement('button')
         rmBtn.type = 'button'
         rmBtn.textContent = '删除'
-        rmBtn.addEventListener('click', function() { row.remove() })
+        rmBtn.addEventListener('click', function() { row.remove(); updateComparePreview() })
         row.appendChild(metSel)
         row.appendChild(opSel)
         row.appendChild(valInput)
@@ -642,6 +680,7 @@ function buildAdvancedParams(prefill) {
         stSelect.appendChild(opt)
     })
     stSelect.value = (prefill && prefill.searchType) ? prefill.searchType : 'web'
+    stSelect.addEventListener('change', updateComparePreview)
     container.appendChild(mkField('搜索类型', stSelect))
     const startRowCurrent = (prefill && prefill.startRow != null) ? prefill.startRow : 0
     container.appendChild(mkField('起始行', buildSelectWithCustom({
@@ -725,22 +764,36 @@ function updateComparePreview() {
         preview.innerHTML = '<p class="field-hint">请先设置本期日期</p>'
         return
     }
+    const prev = computePreviousPeriod(basic.startDate, basic.endDate)
     const site = cachedSites.find(function(s) { return s.siteUrl === basic.siteUrl })
     const adv = readAdvancedParams()
     preview.innerHTML = ''
-    preview.appendChild(el('div', { className: 'preview-title', text: '本期（预览）' }))
+    preview.appendChild(el('div', { className: 'preview-title', text: '查询预览' }))
     const rows = [
         ['站点', site ? siteDisplayName(site) : (basic.siteUrl || '—')],
         ['数据状态', basic.dataState || 'final'],
-        ['周期', basic.startDate + ' ~ ' + basic.endDate],
+        ['本期', basic.startDate + ' ~ ' + basic.endDate],
+        ['上期', prev.startDate + ' ~ ' + prev.endDate],
         ['维度', (basic.dimensions || []).map(function(d) { return DIMENSION_LABELS[d] || d }).join('、') || '（全部）'],
         ['最大行数', basic.rowLimit || 1000],
     ]
     if (adv.searchType && adv.searchType !== 'web') rows.push(['搜索类型', adv.searchType])
     if (adv.filters && adv.filters.length) {
         rows.push(['维度筛选', adv.filters.map(function(f) {
-            return f.dimension + ' ' + f.operator + ' "' + f.expression + '"'
-        }).join(', ')])
+            const dimLabel = DIMENSION_LABELS[f.dimension] || f.dimension
+            const expr = f.dimension === 'country' ? (COUNTRY_NAMES[f.expression] || f.expression) : f.expression
+            return dimLabel + ' ' + f.operator + ' "' + expr + '"'
+        }).join('; ')])
+    }
+    if (adv.metricFilters && adv.metricFilters.length) {
+        rows.push(['当期筛选', adv.metricFilters.map(function(f) {
+            return (METRIC_LABELS[f.metric] || f.metric) + ' ' + f.operator + ' ' + f.value
+        }).join('; ')])
+    }
+    if (adv.previousMetricFilters && adv.previousMetricFilters.length) {
+        rows.push(['上期筛选', adv.previousMetricFilters.map(function(f) {
+            return (METRIC_LABELS[f.metric] || f.metric) + ' ' + f.operator + ' ' + f.value
+        }).join('; ')])
     }
     rows.forEach(function(r) {
         const row = document.createElement('div')
