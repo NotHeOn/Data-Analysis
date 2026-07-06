@@ -292,11 +292,36 @@ button:disabled {
     border-color: #93bce8;
 }
 
-#compare-toggle-btn.active {
-    background: #ddf4ff;
-    border-color: #0969da;
+/* ---- Query mode sub-tabs ---- */
+
+.query-mode-tabs {
+    display: flex;
+    border-bottom: 1px solid #ddd;
+    margin-bottom: 1rem;
+}
+
+.query-mode-btn {
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: none;
+    padding: 0.4rem 1rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    color: #555;
+    margin-bottom: -1px;
+}
+
+.query-mode-btn:hover {
+    background: none;
+    color: #222;
+}
+
+.query-mode-btn.active {
+    border-bottom-color: #0969da;
     color: #0969da;
     font-weight: 600;
+    background: none;
 }
 
 /* ---- Results ---- */

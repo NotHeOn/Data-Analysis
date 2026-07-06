@@ -364,7 +364,7 @@ function renderSitesConfigTable() {
     table.className = 'result-table'
     const thead = document.createElement('thead')
     const headRow = document.createElement('tr')
-    ;['站点 URL', '权限', '别名', '默认数据状态'].forEach(function(t) { headRow.appendChild(el('th', { text: t })) })
+    ;['站点 URL', '权限', '别名', '默认数据状态', '黑名单'].forEach(function(t) { headRow.appendChild(el('th', { text: t })) })
     thead.appendChild(headRow)
     table.appendChild(thead)
     const tbody = document.createElement('tbody')
@@ -397,6 +397,18 @@ function renderSitesConfigTable() {
         const dsTd = document.createElement('td')
         dsTd.appendChild(dsSelect)
         tr.appendChild(dsTd)
+        const blacklistCb = document.createElement('input')
+        blacklistCb.type = 'checkbox'
+        blacklistCb.checked = !!site.blacklisted
+        blacklistCb.addEventListener('change', function() {
+            saveSiteConfig(site.siteUrl, { blacklisted: blacklistCb.checked })
+            const basicEl = document.getElementById('basic-params')
+            if (basicEl) basicEl.replaceWith(buildBasicParams(readBasicParams()))
+        })
+        const blTd = document.createElement('td')
+        blTd.style.textAlign = 'center'
+        blTd.appendChild(blacklistCb)
+        tr.appendChild(blTd)
         tbody.appendChild(tr)
     })
     table.appendChild(tbody)
@@ -440,7 +452,7 @@ function buildSiteUrlSelect(prefillSiteUrl) {
     }
     const select = document.createElement('select')
     select.id = 'field-siteUrl-select'
-    cachedSites.forEach(function(site) {
+    cachedSites.filter(function(s) { return !s.blacklisted }).forEach(function(site) {
         const opt = document.createElement('option')
         opt.value = site.siteUrl
         opt.textContent = siteDisplayName(site)
@@ -459,7 +471,7 @@ function buildSiteUrlSelect(prefillSiteUrl) {
         manualInput.style.display = select.value === '__manual__' ? '' : 'none'
         if (select.value !== '__manual__') onSiteChange(select.value)
     })
-    if (prefillSiteUrl && cachedSites.some(function(s) { return s.siteUrl === prefillSiteUrl })) {
+    if (prefillSiteUrl && cachedSites.filter(function(s) { return !s.blacklisted }).some(function(s) { return s.siteUrl === prefillSiteUrl })) {
         select.value = prefillSiteUrl
     } else if (prefillSiteUrl) {
         select.value = '__manual__'
@@ -697,18 +709,18 @@ function updateComparePreview() {
     })
 }
 
-function toggleCompareMode() {
-    compareMode = !compareMode
-    const btn = document.getElementById('compare-toggle-btn')
+function setQueryMode(mode) {
+    compareMode = mode === 'compare'
+    document.querySelectorAll('.query-mode-btn').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.mode === mode)
+    })
     const preview = document.getElementById('compare-preview')
     const layout = document.getElementById('params-layout')
     if (compareMode) {
-        if (btn) btn.classList.add('active')
         if (preview) preview.hidden = false
         if (layout) layout.classList.add('compare-mode')
         updateComparePreview()
     } else {
-        if (btn) btn.classList.remove('active')
         if (preview) preview.hidden = true
         if (layout) layout.classList.remove('compare-mode')
     }
@@ -816,7 +828,7 @@ function applyPreset(preset) {
         lastDateShortcut = null
     }
     const isCompare = preset.fn.indexOf('comparePeriods') === 0
-    if (isCompare !== compareMode) toggleCompareMode()
+    setQueryMode(isCompare ? 'compare' : 'simple')
     const hasAdv = (params.searchType && params.searchType !== 'web') ||
         params.orderBy ||
         (params.filters && params.filters.length) ||
@@ -959,6 +971,18 @@ function renderQueryTab() {
     const comparePreview = el('div', { id: 'compare-preview' })
     comparePreview.hidden = true
     paramsLayout.appendChild(comparePreview)
+    const queryModeTabs = document.createElement('nav')
+    queryModeTabs.className = 'query-mode-tabs'
+    ;[['compare', '对比查询'], ['simple', '普通查询']].forEach(function(pair) {
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'query-mode-btn'
+        btn.dataset.mode = pair[0]
+        btn.textContent = pair[1]
+        btn.addEventListener('click', function() { setQueryMode(pair[0]) })
+        queryModeTabs.appendChild(btn)
+    })
+    paramsSection.appendChild(queryModeTabs)
     paramsSection.appendChild(paramsLayout)
     const actionsRow = document.createElement('div')
     actionsRow.className = 'actions'
@@ -968,17 +992,12 @@ function renderQueryTab() {
     queryBtn.className = 'btn-primary'
     queryBtn.textContent = '查询'
     queryBtn.addEventListener('click', executeQuery)
-    const compareBtn = document.createElement('button')
-    compareBtn.type = 'button'
-    compareBtn.id = 'compare-toggle-btn'
-    compareBtn.textContent = '对比查询'
-    compareBtn.addEventListener('click', toggleCompareMode)
     actionsRow.appendChild(queryBtn)
-    actionsRow.appendChild(compareBtn)
     paramsSection.appendChild(actionsRow)
     container.appendChild(paramsSection)
     // Results
     container.appendChild(el('div', { id: 'result' }))
+    setQueryMode('compare')
 }
 
 // ============================================================
