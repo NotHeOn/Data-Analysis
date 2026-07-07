@@ -434,6 +434,22 @@ table.result-table tr:nth-child(even) {
 
 /* ---- Presets ---- */
 
+/* ---- Page open link ---- */
+
+.page-link-btn {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 4px;
+    color: #ccc;
+    vertical-align: middle;
+    line-height: 1;
+    text-decoration: none;
+}
+
+.page-link-btn:hover {
+    color: #0969da;
+}
+
 /* ---- Trend button ---- */
 
 .trend-btn {

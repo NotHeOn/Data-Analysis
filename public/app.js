@@ -1077,6 +1077,7 @@ function renderRowsTable(container, rows, dimensions) {
         ;(row.keys || []).forEach(function(k, i) {
             const td = document.createElement('td')
             td.appendChild(document.createTextNode(formatKey(dimensions[i], k)))
+            if (dimensions[i] === 'page') td.appendChild(makePageLink(k))
             if (i === 0) { const tb = makeTrendBtn(row.keys, dimensions); if (tb) td.appendChild(tb) }
             tr.appendChild(td)
         })
@@ -1109,6 +1110,7 @@ function renderCompareTable(container, result, dimensions) {
         ;(row.keys || []).forEach(function(k, i) {
             const td = document.createElement('td')
             td.appendChild(document.createTextNode(formatKey(dimensions[i], k)))
+            if (dimensions[i] === 'page') td.appendChild(makePageLink(k))
             if (i === 0 && isNew) td.appendChild(el('span', { className: 'new-row-badge', text: '新' }))
             if (i === 0) { const tb = makeTrendBtn(row.keys, dimensions); if (tb) td.appendChild(tb) }
             tr.appendChild(td)
@@ -1137,6 +1139,17 @@ function renderCompareTable(container, result, dimensions) {
 // ============================================================
 // Tab 2: Trend chart
 // ============================================================
+
+function makePageLink(url) {
+    const a = document.createElement('a')
+    a.href = url
+    a.target = '_blank'
+    a.rel = 'noopener noreferrer'
+    a.className = 'page-link-btn'
+    a.title = '在新标签页打开'
+    a.innerHTML = '<svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 1.5H1.5v8h8V6.5"/><polyline points="6.5,1.5 9.5,1.5 9.5,4.5"/><line x1="5.5" y1="5.5" x2="9.5" y2="1.5"/></svg>'
+    return a
+}
 
 function makeTrendBtn(rowKeys, dimensions) {
     const nonDateDims = dimensions.filter(function(d) { return d !== 'date' })
