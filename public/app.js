@@ -1453,3 +1453,14 @@ async function init() {
 }
 
 init()
+
+// Live reload: public file changes → reload; server restart (new token) → reload
+;(function () {
+    var token = null
+    var es = new EventSource('/api/livereload')
+    es.addEventListener('init', function (e) {
+        if (token !== null && e.data !== token) { location.reload(); return }
+        token = e.data
+    })
+    es.addEventListener('reload', function () { location.reload() })
+})()

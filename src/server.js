@@ -20,6 +20,20 @@ const FN_MAP = {
     ...compare
 }
 
+// --- Live reload ---
+const SERVER_START_TOKEN = Date.now().toString(36)
+const liveReloadClients = new Set()
+try {
+    fs.watch(publicDir, { recursive: true }, function (_, filename) {
+        if (!filename || !/\.(js|css|html)$/.test(filename)) return
+        for (const res of liveReloadClients) {
+            try { res.write('event: reload\ndata: ' + filename + '\n\n') } catch (_) {}
+        }
+    })
+} catch (e) {
+    console.warn('Live reload watch failed:', e.message)
+}
+
 const CONTENT_TYPES = {
     '.html': 'text/html; charset=utf-8',
     '.js': 'text/javascript; charset=utf-8',
@@ -139,6 +153,18 @@ const server = http.createServer(async (req, res) => {
                 writeJsonFile(sitesPath, sites)
             }
             return sendJson(res, 200, { ok: true })
+        }
+
+        if (req.method === 'GET' && pathname === '/api/livereload') {
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+            })
+            res.write('event: init\ndata: ' + SERVER_START_TOKEN + '\n\n')
+            liveReloadClients.add(res)
+            req.on('close', function () { liveReloadClients.delete(res) })
+            return
         }
 
         return serveStatic(req, res, pathname)
