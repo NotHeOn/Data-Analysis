@@ -94,9 +94,15 @@ function applyDeltaFilters(row, deltaFilters) {
         } else {
             val = absDelta
         }
-        if (f.min != null && val < f.min) return false
-        if (f.max != null && val > f.max) return false
-        return true
+        switch (f.operator) {
+            case '>':  return val > f.value
+            case '>=': return val >= f.value
+            case '<':  return val < f.value
+            case '<=': return val <= f.value
+            case '=':  return val === f.value
+            case '!=': return val !== f.value
+            default:   return true
+        }
     })
 }
 

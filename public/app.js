@@ -352,7 +352,7 @@ function readMetricFilters(idPrefix) {
 function buildDeltaFiltersEditor(currentFilters) {
     const container = document.createElement('div')
     container.id = 'delta-filters-editor'
-    container.appendChild(el('div', { className: 'field-hint', text: '正值=增加/排名下滑，负值=减少/排名提升；变化率%填整数（如 -20 表示 -20%）；仅对比查询生效' }))
+    container.appendChild(el('div', { className: 'field-hint', text: '正值=增加/排名下滑，负值=减少/排名提升；变化率%填小数（-0.2 表示 -20%）；仅对比查询生效' }))
     const rowsContainer = document.createElement('div')
     rowsContainer.id = 'delta-filters-rows'
     container.appendChild(rowsContainer)
@@ -375,29 +375,27 @@ function buildDeltaFiltersEditor(currentFilters) {
             modeSel.appendChild(opt)
         })
         if (filter && filter.mode) modeSel.value = filter.mode
-        const minInput = document.createElement('input')
-        minInput.type = 'number'; minInput.className = 'delta-filter-min filter-expression'
-        minInput.placeholder = '最小'; minInput.style.width = '62px'
-        const maxInput = document.createElement('input')
-        maxInput.type = 'number'; maxInput.className = 'delta-filter-max filter-expression'
-        maxInput.placeholder = '最大'; maxInput.style.width = '62px'
-        if (filter) {
-            const scale = filter.mode === 'relative' ? 100 : 1
-            if (filter.min != null) minInput.value = Math.round(filter.min * scale * 10) / 10
-            if (filter.max != null) maxInput.value = Math.round(filter.max * scale * 10) / 10
-        }
+        const opSel = document.createElement('select')
+        opSel.className = 'delta-filter-operator'
+        METRIC_OPERATORS.forEach(function(op) {
+            const opt = document.createElement('option')
+            opt.value = op; opt.textContent = op
+            opSel.appendChild(opt)
+        })
+        if (filter && filter.operator) opSel.value = filter.operator
+        const valInput = document.createElement('input')
+        valInput.type = 'number'; valInput.className = 'delta-filter-value filter-expression'
+        valInput.placeholder = '数值'
+        if (filter && filter.value != null) valInput.value = filter.value
         metSel.addEventListener('change', updateComparePreview)
-        modeSel.addEventListener('change', function() { minInput.value = ''; maxInput.value = ''; updateComparePreview() })
-        minInput.addEventListener('input', updateComparePreview)
-        maxInput.addEventListener('input', updateComparePreview)
-        const sep = document.createElement('span')
-        sep.textContent = '~'; sep.style.cssText = 'padding:0 0.2rem;color:#888;flex-shrink:0;align-self:center;'
+        modeSel.addEventListener('change', updateComparePreview)
+        opSel.addEventListener('change', updateComparePreview)
+        valInput.addEventListener('input', updateComparePreview)
         const rmBtn = document.createElement('button')
         rmBtn.type = 'button'; rmBtn.textContent = '删除'
         rmBtn.addEventListener('click', function() { row.remove(); updateComparePreview() })
-        row.appendChild(metSel); row.appendChild(modeSel)
-        row.appendChild(minInput); row.appendChild(sep); row.appendChild(maxInput)
-        row.appendChild(rmBtn)
+        row.appendChild(metSel); row.appendChild(modeSel); row.appendChild(opSel)
+        row.appendChild(valInput); row.appendChild(rmBtn)
         rowsContainer.appendChild(row)
     }
     const addBtn = document.createElement('button')
@@ -412,15 +410,13 @@ function readDeltaFilters() {
     const rows = document.querySelectorAll('#delta-filters-rows .filter-row')
     const filters = []
     rows.forEach(function(row) {
-        const mode = row.querySelector('.delta-filter-mode').value
-        const minRaw = row.querySelector('.delta-filter-min').value
-        const maxRaw = row.querySelector('.delta-filter-max').value
-        if (minRaw === '' && maxRaw === '') return
-        const scale = mode === 'relative' ? 0.01 : 1
-        const f = { metric: row.querySelector('.delta-filter-metric').value, mode: mode }
-        if (minRaw !== '') f.min = parseFloat(minRaw) * scale
-        if (maxRaw !== '') f.max = parseFloat(maxRaw) * scale
-        filters.push(f)
+        const raw = row.querySelector('.delta-filter-value').value
+        if (raw !== '') filters.push({
+            metric: row.querySelector('.delta-filter-metric').value,
+            mode: row.querySelector('.delta-filter-mode').value,
+            operator: row.querySelector('.delta-filter-operator').value,
+            value: parseFloat(raw)
+        })
     })
     return filters
 }
@@ -878,12 +874,8 @@ function updateComparePreview() {
     if (adv.deltaFilters && adv.deltaFilters.length) {
         rows.push(['变化筛选', adv.deltaFilters.map(function(f) {
             const mLabel = METRIC_LABELS[f.metric] || f.metric
-            const pct = f.mode === 'relative'
-            const fmt = function(v) { return pct ? (Math.round(v * 1000) / 10) + '%' : String(v) }
-            const lo = f.min != null ? fmt(f.min) : ''
-            const hi = f.max != null ? fmt(f.max) : ''
-            const range = lo && hi ? lo + ' ~ ' + hi : (lo ? '≥ ' + lo : '≤ ' + hi)
-            return mLabel + ' ' + range
+            const valStr = f.mode === 'relative' ? (Math.round(f.value * 1000) / 10) + '%' : String(f.value)
+            return mLabel + '(' + (f.mode === 'relative' ? '%' : '绝对') + ') ' + f.operator + ' ' + valStr
         }).join('; ')])
     }
     rows.forEach(function(r) {
