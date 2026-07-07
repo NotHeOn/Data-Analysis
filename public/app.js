@@ -1191,14 +1191,26 @@ async function fetchTrendData(rowKeys, dimensions, params) {
         call({ startDate: params.startDate, endDate: params.endDate }),
         call({ startDate: prev.startDate, endDate: prev.endDate })
     ])
-    function toPoints(rows) {
-        return (rows || []).map(function(row) {
-            return { date: row.keys[0], clicks: row.clicks || 0, impressions: row.impressions || 0, ctr: row.ctr || 0, position: row.position || 0 }
-        }).sort(function(a, b) { return a.date < b.date ? -1 : 1 })
+    // Fill every calendar day in the range so X axis is uniform.
+    // Missing days (GSC omits zero-data dates) become {clicks:0, impressions:0, ctr:null, position:null}.
+    // null tells drawLine to lift the pen rather than draw to 0 (which would distort ctr/position scales).
+    function fillRange(startDate, endDate, rows) {
+        const map = new Map((rows || []).map(function(row) {
+            return [row.keys[0], { date: row.keys[0], clicks: row.clicks || 0, impressions: row.impressions || 0, ctr: row.ctr, position: row.position }]
+        }))
+        const result = []
+        const cur = new Date(startDate + 'T00:00:00Z')
+        const end = new Date(endDate + 'T00:00:00Z')
+        while (cur <= end) {
+            const d = cur.toISOString().slice(0, 10)
+            result.push(map.get(d) || { date: d, clicks: 0, impressions: 0, ctr: null, position: null })
+            cur.setUTCDate(cur.getUTCDate() + 1)
+        }
+        return result
     }
     return {
-        currentPoints: toPoints(curData.result),
-        prevPoints: toPoints(prevData.result),
+        currentPoints: fillRange(params.startDate, params.endDate, curData.result),
+        prevPoints: fillRange(prev.startDate, prev.endDate, prevData.result),
         currentPeriod: { startDate: params.startDate, endDate: params.endDate },
         previousPeriod: prev
     }
@@ -1274,7 +1286,7 @@ function drawTrendChart(canvas, currentPoints, prevPoints, metric, dpr) {
     const ml = 50, mr = 12, mt = 12, mb = 28
     const iW = W - ml - mr, iH = H - mt - mb
 
-    const allVals = currentPoints.concat(prevPoints).map(function(p) { return p[metric] })
+    const allVals = currentPoints.concat(prevPoints).map(function(p) { return p[metric] }).filter(function(v) { return v !== null })
     if (!allVals.length) {
         ctx.fillStyle = '#bbb'; ctx.font = '11px system-ui'; ctx.textAlign = 'center'
         ctx.fillText('无数据', W / 2, H / 2); return
@@ -1313,7 +1325,12 @@ function drawTrendChart(canvas, currentPoints, prevPoints, metric, dpr) {
         ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.lineCap = 'round'
         ctx.setLineDash(dash ? [5, 4] : [])
         ctx.beginPath()
-        pts.forEach(function(p, i) { i === 0 ? ctx.moveTo(xS(i), yS(p[metric])) : ctx.lineTo(xS(i), yS(p[metric])) })
+        let penDown = false
+        pts.forEach(function(p, i) {
+            if (p[metric] === null) { penDown = false; return }
+            if (!penDown) { ctx.moveTo(xS(i), yS(p[metric])); penDown = true }
+            else { ctx.lineTo(xS(i), yS(p[metric])) }
+        })
         ctx.stroke(); ctx.setLineDash([])
     }
     drawLine(prevPoints, '#bbb', true)
