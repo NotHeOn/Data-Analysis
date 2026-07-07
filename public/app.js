@@ -7,6 +7,16 @@ const ROWLIMIT_PRESETS = [10, 25, 50, 100, 250, 500, 1000, 2000, 5000]
 const STARTROW_PRESETS = [0, 25, 50, 100, 250, 500, 1000]
 const METRIC_OPTIONS = ['clicks', 'impressions', 'ctr', 'position']
 const METRIC_OPERATORS = ['>', '>=', '<', '<=', '=', '!=']
+const DELTA_FILTER_OPTIONS = [
+    { value: 'clicks_absolute',      label: '点击变化量',   metric: 'clicks',      mode: 'absolute' },
+    { value: 'impressions_absolute', label: '展现变化量',   metric: 'impressions', mode: 'absolute' },
+    { value: 'ctr_absolute',         label: '点击率变化量', metric: 'ctr',         mode: 'absolute' },
+    { value: 'position_absolute',    label: '排名变化量',   metric: 'position',    mode: 'absolute' },
+    { value: 'clicks_relative',      label: '点击变化率',   metric: 'clicks',      mode: 'relative' },
+    { value: 'impressions_relative', label: '展现变化率',   metric: 'impressions', mode: 'relative' },
+    { value: 'ctr_relative',         label: '点击率变化率', metric: 'ctr',         mode: 'relative' },
+    { value: 'position_relative',    label: '排名变化率',   metric: 'position',    mode: 'relative' },
+]
 const DATE_SHORTCUTS = [
     { label: '近3天',  days: 3  },
     { label: '近7天',  days: 7  },
@@ -352,29 +362,24 @@ function readMetricFilters(idPrefix) {
 function buildDeltaFiltersEditor(currentFilters) {
     const container = document.createElement('div')
     container.id = 'delta-filters-editor'
-    container.appendChild(el('div', { className: 'field-hint', text: '正值=增加/排名下滑，负值=减少/排名提升；变化率%填小数（-0.2 表示 -20%）；仅对比查询生效' }))
+    container.appendChild(el('div', { className: 'field-hint', text: '变化量=绝对数值差；变化率填整数百分比（-20 表示 -20%）；正值=增加/排名下滑，负值=减少/排名提升；仅对比查询生效' }))
     const rowsContainer = document.createElement('div')
     rowsContainer.id = 'delta-filters-rows'
     container.appendChild(rowsContainer)
     function addRow(filter) {
         const row = document.createElement('div')
         row.className = 'filter-row'
-        const metSel = document.createElement('select')
-        metSel.className = 'delta-filter-metric'
-        METRIC_OPTIONS.forEach(function(m) {
+        const comboSel = document.createElement('select')
+        comboSel.className = 'delta-filter-combo'
+        DELTA_FILTER_OPTIONS.forEach(function(o) {
             const opt = document.createElement('option')
-            opt.value = m; opt.textContent = METRIC_LABELS[m] || m
-            metSel.appendChild(opt)
+            opt.value = o.value; opt.textContent = o.label
+            comboSel.appendChild(opt)
         })
-        if (filter && filter.metric) metSel.value = filter.metric
-        const modeSel = document.createElement('select')
-        modeSel.className = 'delta-filter-mode'
-        ;[['absolute', '绝对变化'], ['relative', '变化率%']].forEach(function(pair) {
-            const opt = document.createElement('option')
-            opt.value = pair[0]; opt.textContent = pair[1]
-            modeSel.appendChild(opt)
-        })
-        if (filter && filter.mode) modeSel.value = filter.mode
+        if (filter && filter.metric && filter.mode) {
+            const match = DELTA_FILTER_OPTIONS.find(function(o) { return o.metric === filter.metric && o.mode === filter.mode })
+            if (match) comboSel.value = match.value
+        }
         const opSel = document.createElement('select')
         opSel.className = 'delta-filter-operator'
         METRIC_OPERATORS.forEach(function(op) {
@@ -386,16 +391,25 @@ function buildDeltaFiltersEditor(currentFilters) {
         const valInput = document.createElement('input')
         valInput.type = 'number'; valInput.className = 'delta-filter-value filter-expression'
         valInput.placeholder = '数值'
-        if (filter && filter.value != null) valInput.value = filter.value
-        metSel.addEventListener('change', updateComparePreview)
-        modeSel.addEventListener('change', updateComparePreview)
+        const unitSpan = document.createElement('span')
+        unitSpan.className = 'delta-filter-unit'
+        function syncUnit() {
+            const sel = DELTA_FILTER_OPTIONS.find(function(o) { return o.value === comboSel.value })
+            unitSpan.textContent = (sel && sel.mode === 'relative') ? '%' : ''
+        }
+        syncUnit()
+        if (filter && filter.value != null) {
+            const sel = DELTA_FILTER_OPTIONS.find(function(o) { return o.metric === filter.metric && o.mode === filter.mode })
+            valInput.value = (sel && sel.mode === 'relative') ? Math.round(filter.value * 100 * 10) / 10 : filter.value
+        }
+        comboSel.addEventListener('change', function() { syncUnit(); updateComparePreview() })
         opSel.addEventListener('change', updateComparePreview)
         valInput.addEventListener('input', updateComparePreview)
         const rmBtn = document.createElement('button')
         rmBtn.type = 'button'; rmBtn.textContent = '删除'
         rmBtn.addEventListener('click', function() { row.remove(); updateComparePreview() })
-        row.appendChild(metSel); row.appendChild(modeSel); row.appendChild(opSel)
-        row.appendChild(valInput); row.appendChild(rmBtn)
+        row.appendChild(comboSel); row.appendChild(opSel)
+        row.appendChild(valInput); row.appendChild(unitSpan); row.appendChild(rmBtn)
         rowsContainer.appendChild(row)
     }
     const addBtn = document.createElement('button')
@@ -411,11 +425,16 @@ function readDeltaFilters() {
     const filters = []
     rows.forEach(function(row) {
         const raw = row.querySelector('.delta-filter-value').value
-        if (raw !== '') filters.push({
-            metric: row.querySelector('.delta-filter-metric').value,
-            mode: row.querySelector('.delta-filter-mode').value,
+        if (raw === '') return
+        const combo = row.querySelector('.delta-filter-combo').value
+        const opt = DELTA_FILTER_OPTIONS.find(function(o) { return o.value === combo })
+        if (!opt) return
+        const scale = opt.mode === 'relative' ? 0.01 : 1
+        filters.push({
+            metric: opt.metric,
+            mode: opt.mode,
             operator: row.querySelector('.delta-filter-operator').value,
-            value: parseFloat(raw)
+            value: parseFloat(raw) * scale
         })
     })
     return filters
@@ -873,9 +892,10 @@ function updateComparePreview() {
     }
     if (adv.deltaFilters && adv.deltaFilters.length) {
         rows.push(['变化筛选', adv.deltaFilters.map(function(f) {
-            const mLabel = METRIC_LABELS[f.metric] || f.metric
-            const valStr = f.mode === 'relative' ? (Math.round(f.value * 1000) / 10) + '%' : String(f.value)
-            return mLabel + '(' + (f.mode === 'relative' ? '%' : '绝对') + ') ' + f.operator + ' ' + valStr
+            const opt = DELTA_FILTER_OPTIONS.find(function(o) { return o.metric === f.metric && o.mode === f.mode })
+            const label = opt ? opt.label : (METRIC_LABELS[f.metric] || f.metric)
+            const valStr = f.mode === 'relative' ? (Math.round(f.value * 100 * 10) / 10) + '%' : String(f.value)
+            return label + ' ' + f.operator + ' ' + valStr
         }).join('; ')])
     }
     rows.forEach(function(r) {
