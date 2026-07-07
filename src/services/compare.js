@@ -82,6 +82,24 @@ async function comparePeriodsSimple({ siteUrl, dataState = 'all', startDate, end
 // 4. Merge verified rows; rows still missing after verification are new (synthesized as zeros)
 // 5. All rows now have a previous object; apply metricFilters and previousMetricFilters uniformly
 //    (new words have previous = zeros, so previousMetricFilters: [clicks > 0] naturally excludes them)
+function applyDeltaFilters(row, deltaFilters) {
+    return deltaFilters.every(f => {
+        const absDelta = row.delta ? row.delta[f.metric] : null
+        if (absDelta == null) return false
+        let val
+        if (f.mode === 'relative') {
+            const prevVal = row.previous ? (row.previous[f.metric] || 0) : 0
+            if (prevVal === 0) return false
+            val = absDelta / prevVal
+        } else {
+            val = absDelta
+        }
+        if (f.min != null && val < f.min) return false
+        if (f.max != null && val > f.max) return false
+        return true
+    })
+}
+
 async function comparePeriodsAdvanced({
     siteUrl,
     dataState = 'all',
@@ -94,7 +112,8 @@ async function comparePeriodsAdvanced({
     orderBy,
     filters = [],
     metricFilters = [],
-    previousMetricFilters = []
+    previousMetricFilters = [],
+    deltaFilters = []
 }) {
     const previous = previousPeriod(startDate, endDate)
 
@@ -134,6 +153,7 @@ async function comparePeriodsAdvanced({
 
     if (metricFilters.length) rows = rows.filter(r => applyMetricFilters([r.current], metricFilters).length > 0)
     if (previousMetricFilters.length) rows = rows.filter(r => applyMetricFilters([r.previous], previousMetricFilters).length > 0)
+    if (deltaFilters.length) rows = rows.filter(r => applyDeltaFilters(r, deltaFilters))
 
     return { currentPeriod: { startDate, endDate }, previousPeriod: previous, rows }
 }

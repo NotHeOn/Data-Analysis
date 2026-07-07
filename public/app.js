@@ -349,6 +349,82 @@ function readMetricFilters(idPrefix) {
     return filters
 }
 
+function buildDeltaFiltersEditor(currentFilters) {
+    const container = document.createElement('div')
+    container.id = 'delta-filters-editor'
+    container.appendChild(el('div', { className: 'field-hint', text: '正值=增加/排名下滑，负值=减少/排名提升；变化率%填整数（如 -20 表示 -20%）；仅对比查询生效' }))
+    const rowsContainer = document.createElement('div')
+    rowsContainer.id = 'delta-filters-rows'
+    container.appendChild(rowsContainer)
+    function addRow(filter) {
+        const row = document.createElement('div')
+        row.className = 'filter-row'
+        const metSel = document.createElement('select')
+        metSel.className = 'delta-filter-metric'
+        METRIC_OPTIONS.forEach(function(m) {
+            const opt = document.createElement('option')
+            opt.value = m; opt.textContent = METRIC_LABELS[m] || m
+            metSel.appendChild(opt)
+        })
+        if (filter && filter.metric) metSel.value = filter.metric
+        const modeSel = document.createElement('select')
+        modeSel.className = 'delta-filter-mode'
+        ;[['absolute', '绝对变化'], ['relative', '变化率%']].forEach(function(pair) {
+            const opt = document.createElement('option')
+            opt.value = pair[0]; opt.textContent = pair[1]
+            modeSel.appendChild(opt)
+        })
+        if (filter && filter.mode) modeSel.value = filter.mode
+        const minInput = document.createElement('input')
+        minInput.type = 'number'; minInput.className = 'delta-filter-min filter-expression'
+        minInput.placeholder = '最小'; minInput.style.width = '62px'
+        const maxInput = document.createElement('input')
+        maxInput.type = 'number'; maxInput.className = 'delta-filter-max filter-expression'
+        maxInput.placeholder = '最大'; maxInput.style.width = '62px'
+        if (filter) {
+            const scale = filter.mode === 'relative' ? 100 : 1
+            if (filter.min != null) minInput.value = Math.round(filter.min * scale * 10) / 10
+            if (filter.max != null) maxInput.value = Math.round(filter.max * scale * 10) / 10
+        }
+        metSel.addEventListener('change', updateComparePreview)
+        modeSel.addEventListener('change', function() { minInput.value = ''; maxInput.value = ''; updateComparePreview() })
+        minInput.addEventListener('input', updateComparePreview)
+        maxInput.addEventListener('input', updateComparePreview)
+        const sep = document.createElement('span')
+        sep.textContent = '~'; sep.style.cssText = 'padding:0 0.2rem;color:#888;flex-shrink:0;align-self:center;'
+        const rmBtn = document.createElement('button')
+        rmBtn.type = 'button'; rmBtn.textContent = '删除'
+        rmBtn.addEventListener('click', function() { row.remove(); updateComparePreview() })
+        row.appendChild(metSel); row.appendChild(modeSel)
+        row.appendChild(minInput); row.appendChild(sep); row.appendChild(maxInput)
+        row.appendChild(rmBtn)
+        rowsContainer.appendChild(row)
+    }
+    const addBtn = document.createElement('button')
+    addBtn.type = 'button'; addBtn.textContent = '+ 添加变化筛选'
+    addBtn.addEventListener('click', function() { addRow() })
+    container.appendChild(addBtn)
+    ;(currentFilters || []).forEach(function(f) { addRow(f) })
+    return container
+}
+
+function readDeltaFilters() {
+    const rows = document.querySelectorAll('#delta-filters-rows .filter-row')
+    const filters = []
+    rows.forEach(function(row) {
+        const mode = row.querySelector('.delta-filter-mode').value
+        const minRaw = row.querySelector('.delta-filter-min').value
+        const maxRaw = row.querySelector('.delta-filter-max').value
+        if (minRaw === '' && maxRaw === '') return
+        const scale = mode === 'relative' ? 0.01 : 1
+        const f = { metric: row.querySelector('.delta-filter-metric').value, mode: mode }
+        if (minRaw !== '') f.min = parseFloat(minRaw) * scale
+        if (maxRaw !== '') f.max = parseFloat(maxRaw) * scale
+        filters.push(f)
+    })
+    return filters
+}
+
 // --- Formatting ---
 
 function formatMetricValue(metric, value) {
@@ -720,6 +796,7 @@ function buildAdvancedParams(prefill) {
         'previous-metric-filters', prefill && prefill.previousMetricFilters,
         '按上期指标筛选，新词上期值视为 0（如 clicks > 0 可排除新词）'
     )))
+    container.appendChild(mkField('筛选器（变化量）', buildDeltaFiltersEditor(prefill && prefill.deltaFilters)))
     return container
 }
 
@@ -737,6 +814,7 @@ function readAdvancedParams() {
     params.filters = readFilters()
     params.metricFilters = readMetricFilters('metric-filters')
     params.previousMetricFilters = readMetricFilters('previous-metric-filters')
+    params.deltaFilters = readDeltaFilters()
     return params
 }
 
@@ -750,6 +828,7 @@ function isAdvancedFilled() {
     if (readFilters().length) return true
     if (readMetricFilters('metric-filters').length) return true
     if (readMetricFilters('previous-metric-filters').length) return true
+    if (readDeltaFilters().length) return true
     return false
 }
 
@@ -794,6 +873,17 @@ function updateComparePreview() {
     if (adv.previousMetricFilters && adv.previousMetricFilters.length) {
         rows.push(['上期筛选', adv.previousMetricFilters.map(function(f) {
             return (METRIC_LABELS[f.metric] || f.metric) + ' ' + f.operator + ' ' + f.value
+        }).join('; ')])
+    }
+    if (adv.deltaFilters && adv.deltaFilters.length) {
+        rows.push(['变化筛选', adv.deltaFilters.map(function(f) {
+            const mLabel = METRIC_LABELS[f.metric] || f.metric
+            const pct = f.mode === 'relative'
+            const fmt = function(v) { return pct ? (Math.round(v * 1000) / 10) + '%' : String(v) }
+            const lo = f.min != null ? fmt(f.min) : ''
+            const hi = f.max != null ? fmt(f.max) : ''
+            const range = lo && hi ? lo + ' ~ ' + hi : (lo ? '≥ ' + lo : '≤ ' + hi)
+            return mLabel + ' ' + range
         }).join('; ')])
     }
     rows.forEach(function(r) {
@@ -1103,7 +1193,7 @@ async function openTrendModal(rowKeys, dimensions, params) {
     header.className = 'trend-modal-header'
     const titleEl = document.createElement('h3')
     titleEl.className = 'trend-modal-title'
-    titleEl.textContent = rowKeys.map(function(k, i) { return formatKey(dimensions[i], k) }).join(' / ') + '  趋势'
+    titleEl.textContent = rowKeys.map(function(k, i) { return formatKey(dimensions[i], k) }).join(' - ') + '  趋势'
     const closeBtn = document.createElement('button')
     closeBtn.type = 'button'
     closeBtn.className = 'trend-modal-close'
