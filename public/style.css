@@ -428,6 +428,134 @@ table.result-table tr:nth-child(even) {
 
 /* ---- Presets ---- */
 
+/* ---- Trend button ---- */
+
+.trend-btn {
+    display: inline-flex;
+    align-items: center;
+    border: none;
+    background: none;
+    padding: 1px 3px;
+    margin-left: 4px;
+    cursor: pointer;
+    color: #bbb;
+    border-radius: 3px;
+    vertical-align: middle;
+    line-height: 1;
+}
+
+.trend-btn:hover {
+    color: #0969da;
+    background: #eaf2ff;
+}
+
+/* ---- Trend modal ---- */
+
+.trend-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.42);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.trend-modal {
+    background: #fff;
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem 1.5rem;
+    max-width: 800px;
+    width: calc(100vw - 3rem);
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.trend-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.trend-modal-title {
+    flex: 1;
+    margin: 0;
+    font-size: 0.97rem;
+    font-weight: 600;
+    color: #222;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.trend-modal-close {
+    border: none;
+    background: none;
+    font-size: 1.4rem;
+    line-height: 1;
+    color: #999;
+    cursor: pointer;
+    padding: 0 0.2rem;
+    flex-shrink: 0;
+}
+
+.trend-modal-close:hover { color: #222; background: none; }
+
+.trend-loading {
+    text-align: center;
+    color: #888;
+    padding: 2.5rem;
+    font-size: 0.9rem;
+}
+
+.trend-legend {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+    font-size: 0.82rem;
+    color: #555;
+}
+
+.trend-leg {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.trend-leg-line {
+    display: inline-block;
+    width: 22px;
+    height: 2px;
+    border-radius: 1px;
+    flex-shrink: 0;
+}
+
+.trend-leg-cur .trend-leg-line { background: #0969da; }
+.trend-leg-prev .trend-leg-line { background: repeating-linear-gradient(90deg, #bbb 0 5px, transparent 5px 9px); }
+
+.trend-charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.trend-chart-wrap {
+    border: 1px solid #eee;
+    border-radius: 6px;
+    padding: 0.5rem 0.5rem 0.2rem;
+}
+
+.trend-chart-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 0.3rem;
+}
+
+/* ---- Presets ---- */
+
 #presets-list {
     list-style: none;
     padding: 0;
