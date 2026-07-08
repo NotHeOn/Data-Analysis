@@ -1520,10 +1520,8 @@ function buildAnalysisBasicParams() {
         const btn = document.createElement('button')
         btn.type = 'button'; btn.className = 'date-shortcut-btn'; btn.textContent = sc.label
         btn.addEventListener('click', function() {
-            const end = new Date(); end.setUTCDate(end.getUTCDate() - 1)
-            const start = new Date(end); start.setUTCDate(start.getUTCDate() - (sc.days - 1))
-            const fmt = function(d) { return d.toISOString().slice(0, 10) }
-            startInput.value = fmt(start); endInput.value = fmt(end)
+            const range = dateRangeFromShortcut(sc.days, dsSelect.value)
+            startInput.value = range.startDate; endInput.value = range.endDate
         })
         shortcuts.appendChild(btn)
     })
