@@ -1122,7 +1122,7 @@ function renderRowsTable(container, rows, dimensions) {
     makeTableSortable(table)
 }
 
-function renderCompareTable(container, result, dimensions) {
+function renderCompareTable(container, result, dimensions, trendParams) {
     container.appendChild(el('div', { className: 'result-meta',
         text: '当期: ' + result.currentPeriod.startDate + ' ~ ' + result.currentPeriod.endDate +
               '　上期: ' + result.previousPeriod.startDate + ' ~ ' + result.previousPeriod.endDate
@@ -1147,7 +1147,7 @@ function renderCompareTable(container, result, dimensions) {
             td.appendChild(document.createTextNode(formatKey(dimensions[i], k)))
             if (dimensions[i] === 'page') td.appendChild(makePageLink(k))
             if (i === 0 && isNew) td.appendChild(el('span', { className: 'new-row-badge', text: '新' }))
-            if (i === 0) { const tb = makeTrendBtn(row.keys, dimensions); if (tb) td.appendChild(tb) }
+            if (i === 0) { const tb = makeTrendBtn(row.keys, dimensions, trendParams); if (tb) td.appendChild(tb) }
             tr.appendChild(td)
         })
         METRIC_OPTIONS.forEach(function(m) {
@@ -1188,7 +1188,7 @@ function makePageLink(url) {
     return a
 }
 
-function makeTrendBtn(rowKeys, dimensions) {
+function makeTrendBtn(rowKeys, dimensions, trendParams) {
     const nonDateDims = dimensions.filter(function(d) { return d !== 'date' })
     if (!nonDateDims.length) return null
     const btn = document.createElement('button')
@@ -1198,8 +1198,9 @@ function makeTrendBtn(rowKeys, dimensions) {
     btn.innerHTML = '<svg width="12" height="10" viewBox="0 0 12 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="0.5,8.5 3,5.5 5.5,7 9,2.5 11.5,1"/><line x1="0.5" y1="9.5" x2="11.5" y2="9.5"/></svg>'
     btn.addEventListener('click', function(e) {
         e.stopPropagation()
-        if (!lastQueryParams || !lastQueryParams.startDate) { alert('请先执行一次查询'); return }
-        openTrendModal(rowKeys, dimensions, lastQueryParams)
+        const p = trendParams || lastQueryParams
+        if (!p || !p.startDate) { alert('请先执行一次查询'); return }
+        openTrendModal(rowKeys, dimensions, p)
     })
     return btn
 }
@@ -1740,7 +1741,7 @@ async function runAnalysis() {
             } else {
                 const count = (data.result.rows || []).length
                 titleEl.appendChild(el('span', { className: 'analysis-group-count', text: count + ' 条' }))
-                renderCompareTable(bodyEl, data.result, group.dimensions || ['query'])
+                renderCompareTable(bodyEl, data.result, group.dimensions || ['query'], params)
             }
         } catch (e) {
             loadingEl.textContent = '查询失败: ' + e.message
