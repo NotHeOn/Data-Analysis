@@ -1852,58 +1852,60 @@ function openPlanModal(plan, saveAsNew) {
 }
 
 function buildGroupAccordion(group) {
-    const details = document.createElement('details')
-    details.className = 'plan-group-accordion'; details.open = false
+    const card = document.createElement('div')
+    card.className = 'plan-group-accordion'
 
-    const summary = document.createElement('summary')
-    summary.className = 'plan-group-summary'
+    // ---- Header ----
+    const header = document.createElement('div')
+    header.className = 'plan-group-summary'
 
     const dragHandle = document.createElement('span')
     dragHandle.className = 'plan-group-drag-handle'; dragHandle.title = '拖动排序'
     dragHandle.innerHTML = '<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="3" cy="2" r="1.2"/><circle cx="7" cy="2" r="1.2"/><circle cx="3" cy="6" r="1.2"/><circle cx="7" cy="6" r="1.2"/><circle cx="3" cy="10" r="1.2"/><circle cx="7" cy="10" r="1.2"/></svg>'
-    dragHandle.addEventListener('mousedown', function() { details.draggable = true })
-    dragHandle.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation() })
+    dragHandle.addEventListener('mousedown', function() { card.draggable = true })
+    dragHandle.addEventListener('click', function(e) { e.stopPropagation() })
 
     const nameSpan = document.createElement('span')
     nameSpan.className = 'plan-group-name-span'; nameSpan.textContent = group.name || '未命名分组'
+
     const nameInput = document.createElement('input')
     nameInput.type = 'text'; nameInput.className = 'plan-group-name-input'; nameInput.style.display = 'none'
     nameInput.value = group.name || ''; nameInput.placeholder = '分组名称'
-
-    const editIconBtn = document.createElement('button')
-    editIconBtn.type = 'button'; editIconBtn.className = 'plan-group-edit-btn'; editIconBtn.title = '重命名'
-    editIconBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.5 L9.5 3.5 L4 9 L1.5 9.5 L2 7 Z"/><line x1="6.5" y1="2.5" x2="8.5" y2="4.5"/></svg>'
-
-    function enterNameEdit(e) {
-        e.stopPropagation(); e.preventDefault()
-        nameSpan.style.display = 'none'; editIconBtn.style.display = 'none'
-        nameInput.style.display = ''; nameInput.focus(); nameInput.select()
-    }
-    function exitNameEdit() {
-        const val = nameInput.value.trim() || nameSpan.textContent
-        nameInput.value = val; nameSpan.textContent = val
-        nameInput.style.display = 'none'
-        nameSpan.style.display = ''; editIconBtn.style.display = ''
-    }
-    editIconBtn.addEventListener('click', enterNameEdit)
-    nameInput.addEventListener('blur', exitNameEdit)
-    nameInput.addEventListener('click', function(e) { e.stopPropagation() })
     nameInput.addEventListener('keydown', function(e) {
         e.stopPropagation()
-        if (e.key === 'Enter') { nameInput.blur() }
-        if (e.key === 'Escape') { nameInput.value = nameSpan.textContent; nameInput.blur() }
+        if (e.key === 'Enter' || e.key === 'Escape') nameInput.blur()
+    })
+    nameInput.addEventListener('blur', function() {
+        const val = nameInput.value.trim() || nameSpan.textContent
+        nameInput.value = val; nameSpan.textContent = val
     })
 
-    const removeBtn = document.createElement('button')
-    removeBtn.type = 'button'; removeBtn.textContent = '删除'
-    removeBtn.addEventListener('click', function(e) {
-        e.preventDefault(); e.stopPropagation()
-        if (confirm('删除分组"' + nameSpan.textContent + '"？')) details.remove()
-    })
-    summary.appendChild(dragHandle); summary.appendChild(nameSpan); summary.appendChild(nameInput); summary.appendChild(editIconBtn); summary.appendChild(removeBtn)
-    details.appendChild(summary)
+    const editIconBtn = document.createElement('button')
+    editIconBtn.type = 'button'; editIconBtn.className = 'plan-group-edit-btn'; editIconBtn.title = '展开编辑'
+    editIconBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.5 L9.5 3.5 L4 9 L1.5 9.5 L2 7 Z"/><line x1="6.5" y1="2.5" x2="8.5" y2="4.5"/></svg>'
 
+    let isOpen = false
+    function setOpen(open) {
+        isOpen = open
+        card.classList.toggle('is-open', open)
+        if (open) {
+            nameSpan.style.display = 'none'; nameInput.style.display = ''
+            requestAnimationFrame(function() { nameInput.select() })
+        } else {
+            const val = nameInput.value.trim() || nameSpan.textContent
+            nameSpan.textContent = val; nameInput.value = val
+            nameSpan.style.display = ''; nameInput.style.display = 'none'
+        }
+    }
+    editIconBtn.addEventListener('click', function(e) { e.stopPropagation(); setOpen(!isOpen) })
+
+    header.appendChild(dragHandle); header.appendChild(nameSpan); header.appendChild(nameInput); header.appendChild(editIconBtn)
+    card.appendChild(header)
+
+    // ---- Body (wrapped for CSS grid animation) ----
+    const bodyWrap = document.createElement('div'); bodyWrap.className = 'plan-group-body-wrap'
     const body = document.createElement('div'); body.className = 'plan-group-body'
+    bodyWrap.appendChild(body)
 
     // Dimensions
     const dimsField = document.createElement('div'); dimsField.className = 'field'
@@ -1964,10 +1966,23 @@ function buildGroupAccordion(group) {
     body.appendChild(el('div', { className: 'plan-group-section-label', text: '变化筛选' }))
     const dfe = buildGroupDeltaFiltersEditor(group.deltaFilters || []); body.appendChild(dfe.el)
 
-    details.appendChild(body)
+    // Footer: delete + save (collapse)
+    const groupFooter = document.createElement('div'); groupFooter.className = 'plan-group-body-footer'
+    const removeBtn = document.createElement('button')
+    removeBtn.type = 'button'; removeBtn.className = 'btn-danger-sm'; removeBtn.textContent = '删除分组'
+    removeBtn.addEventListener('click', function() {
+        if (confirm('删除分组"' + nameSpan.textContent + '"？')) card.remove()
+    })
+    const doneBtn = document.createElement('button')
+    doneBtn.type = 'button'; doneBtn.className = 'btn-primary'; doneBtn.textContent = '保存'
+    doneBtn.addEventListener('click', function() { setOpen(false) })
+    groupFooter.appendChild(removeBtn); groupFooter.appendChild(doneBtn)
+    body.appendChild(groupFooter)
+
+    card.appendChild(bodyWrap)
 
     return {
-        el: details,
+        el: card,
         read: function() {
             return {
                 id: group.id || Date.now().toString(36),

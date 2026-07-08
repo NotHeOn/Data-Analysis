@@ -622,42 +622,53 @@ table.result-table tr:nth-child(even) {
 /* ---- Group accordion ---- */
 
 .plan-group-accordion {
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    margin-bottom: 0.5rem;
+    border: 1.5px solid #c8c8c8;
+    border-radius: 7px;
+    margin-bottom: 0.6rem;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
+
+.plan-group-accordion.is-open {
+    border-color: #0969da;
+    box-shadow: 0 2px 8px rgba(9,105,218,0.12);
+}
+
+.plan-group-accordion.dragging { opacity: 0.35; }
 
 .plan-group-summary {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    list-style: none;
-    cursor: pointer;
-    user-select: none;
+    padding: 0.55rem 0.75rem;
+    background: #f3f4f6;
+    border-radius: 6px;
+    transition: background 0.15s ease;
 }
 
-.plan-group-summary::-webkit-details-marker { display: none; }
+.plan-group-accordion.is-open .plan-group-summary {
+    background: #e8f0fe;
+    border-radius: 5px 5px 0 0;
+}
 
 .plan-group-drag-handle {
     display: inline-flex;
     align-items: center;
     cursor: grab;
-    color: #ccc;
+    color: #aaa;
     padding-right: 4px;
     flex-shrink: 0;
     user-select: none;
 }
 
-.plan-group-drag-handle:hover { color: #888; }
-
-.plan-group-accordion.dragging { opacity: 0.35; }
+.plan-group-drag-handle:hover { color: #555; }
 
 .plan-group-name-span {
     flex: 1;
     font-weight: 600;
     font-size: 0.9rem;
-    color: #222;
+    color: #1a1a1a;
 }
 
 .plan-group-edit-btn {
@@ -665,36 +676,76 @@ table.result-table tr:nth-child(even) {
     align-items: center;
     border: none;
     background: none;
-    padding: 2px 3px;
+    padding: 3px 5px;
     cursor: pointer;
-    color: #bbb;
-    border-radius: 3px;
+    color: #888;
+    border-radius: 4px;
     flex-shrink: 0;
+    transition: color 0.1s, background 0.1s;
 }
 
-.plan-group-edit-btn:hover {
+.plan-group-edit-btn:hover,
+.plan-group-accordion.is-open .plan-group-edit-btn {
     color: #0969da;
-    background: #eaf2ff;
+    background: #dbeafe;
 }
 
 .plan-group-name-input {
     flex: 1;
-    border: 1px solid #0969da;
-    border-radius: 3px;
+    border: none;
+    border-bottom: 2px solid #0969da;
+    border-radius: 0;
     font-weight: 600;
     font-size: 0.9rem;
-    background: #fff;
-    padding: 1px 4px;
+    background: transparent;
+    padding: 1px 2px;
     outline: none;
-    cursor: text;
+    color: #1a1a1a;
+}
+
+/* Body animation wrapper */
+.plan-group-body-wrap {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.22s ease;
+}
+
+.plan-group-accordion.is-open .plan-group-body-wrap {
+    grid-template-rows: 1fr;
 }
 
 .plan-group-body {
-    padding: 0.75rem 1rem 0.75rem;
-    border-top: 1px solid #f0f0f0;
+    overflow: hidden;
+    padding: 0 1rem;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+    transition: padding 0.22s ease;
+}
+
+.plan-group-accordion.is-open .plan-group-body {
+    padding: 0.85rem 1rem 0.5rem;
+}
+
+.plan-group-body-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding-top: 0.6rem;
+    margin-top: 0.25rem;
+    border-top: 1px solid #eee;
+}
+
+.btn-danger-sm {
+    background: #fff;
+    color: #cf222e;
+    border-color: #cf222e;
+    font-size: 0.85rem;
+    padding: 0.3rem 0.7rem;
+}
+
+.btn-danger-sm:hover {
+    background: #fff0f0;
 }
 
 .plan-group-body .field {
