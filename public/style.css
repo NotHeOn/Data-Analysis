@@ -336,7 +336,7 @@ button:disabled {
     background: #f7f7f7;
     border: 1px solid #ddd;
     border-radius: 4px;
-    padding: 0.75rem;
+    padding: 0 0.75rem 0.75rem;
     max-height: 600px;
     overflow: auto;
     font-size: 0.85rem;
@@ -354,6 +354,7 @@ button:disabled {
 }
 
 .result-meta {
+    margin-top: 0.75rem;
     margin-bottom: 0.5rem;
     color: #555;
     font-size: 0.85rem;
@@ -717,7 +718,7 @@ table.result-table tr:nth-child(even) {
 }
 
 .analysis-group-body {
-    padding: 0.5rem 0.75rem 0.75rem;
+    padding: 0 0.75rem 0.75rem;
     overflow: auto;
     max-height: 600px;
 }
