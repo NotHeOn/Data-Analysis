@@ -1748,6 +1748,30 @@ function openPlanModal(plan, saveAsNew) {
     groupsWrap.id = 'plan-modal-groups'
     modal.appendChild(groupsWrap)
 
+    let dragSrc = null
+    groupsWrap.addEventListener('dragstart', function(e) {
+        dragSrc = e.target.closest('.plan-group-accordion')
+        if (!dragSrc) return
+        e.dataTransfer.effectAllowed = 'move'
+        setTimeout(function() { if (dragSrc) dragSrc.classList.add('dragging') }, 0)
+    })
+    groupsWrap.addEventListener('dragover', function(e) {
+        e.preventDefault()
+        if (!dragSrc) return
+        const target = e.target.closest('.plan-group-accordion')
+        if (!target || target === dragSrc) return
+        const rect = target.getBoundingClientRect()
+        if (e.clientY < rect.top + rect.height / 2) {
+            groupsWrap.insertBefore(dragSrc, target)
+        } else {
+            groupsWrap.insertBefore(dragSrc, target.nextSibling)
+        }
+    })
+    groupsWrap.addEventListener('dragend', function() {
+        if (dragSrc) { dragSrc.classList.remove('dragging'); dragSrc.draggable = false }
+        dragSrc = null
+    })
+
     const groupEditors = []
     function addGroupEditor(group) {
         const editor = buildGroupAccordion(group)
@@ -1773,7 +1797,10 @@ function openPlanModal(plan, saveAsNew) {
     saveBtn.addEventListener('click', async function() {
         const name = nameInput.value.trim()
         if (!name) { alert('请输入方案名称'); return }
-        const groups = groupEditors.filter(function(e) { return e.el.parentNode }).map(function(e) { return e.read() })
+        const groups = Array.from(groupsWrap.children).map(function(el) {
+            const editor = groupEditors.find(function(e) { return e.el === el })
+            return editor ? editor.read() : null
+        }).filter(Boolean)
         const planData = { id: plan ? plan.id : Date.now().toString(36), name: name, groups: groups }
         saveBtn.disabled = true; saveBtn.textContent = '保存中...'
         await saveAnalysisPlan(planData, isNew)
@@ -1793,15 +1820,21 @@ function buildGroupAccordion(group) {
     const summary = document.createElement('summary')
     summary.className = 'plan-group-summary'
 
-    // Click-to-edit name: pencil icon → hidden input toggle
-    const editIconBtn = document.createElement('button')
-    editIconBtn.type = 'button'; editIconBtn.className = 'plan-group-edit-btn'; editIconBtn.title = '重命名'
-    editIconBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.5 L9.5 3.5 L4 9 L1.5 9.5 L2 7 Z"/><line x1="6.5" y1="2.5" x2="8.5" y2="4.5"/></svg>'
+    const dragHandle = document.createElement('span')
+    dragHandle.className = 'plan-group-drag-handle'; dragHandle.title = '拖动排序'
+    dragHandle.innerHTML = '<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="3" cy="2" r="1.2"/><circle cx="7" cy="2" r="1.2"/><circle cx="3" cy="6" r="1.2"/><circle cx="7" cy="6" r="1.2"/><circle cx="3" cy="10" r="1.2"/><circle cx="7" cy="10" r="1.2"/></svg>'
+    dragHandle.addEventListener('mousedown', function() { details.draggable = true })
+    dragHandle.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation() })
+
     const nameSpan = document.createElement('span')
     nameSpan.className = 'plan-group-name-span'; nameSpan.textContent = group.name || '未命名分组'
     const nameInput = document.createElement('input')
     nameInput.type = 'text'; nameInput.className = 'plan-group-name-input'; nameInput.style.display = 'none'
     nameInput.value = group.name || ''; nameInput.placeholder = '分组名称'
+
+    const editIconBtn = document.createElement('button')
+    editIconBtn.type = 'button'; editIconBtn.className = 'plan-group-edit-btn'; editIconBtn.title = '重命名'
+    editIconBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.5 L9.5 3.5 L4 9 L1.5 9.5 L2 7 Z"/><line x1="6.5" y1="2.5" x2="8.5" y2="4.5"/></svg>'
 
     function enterNameEdit(e) {
         e.stopPropagation(); e.preventDefault()
@@ -1829,7 +1862,7 @@ function buildGroupAccordion(group) {
         e.preventDefault(); e.stopPropagation()
         if (confirm('删除分组"' + nameSpan.textContent + '"？')) details.remove()
     })
-    summary.appendChild(editIconBtn); summary.appendChild(nameSpan); summary.appendChild(nameInput); summary.appendChild(removeBtn)
+    summary.appendChild(dragHandle); summary.appendChild(nameSpan); summary.appendChild(nameInput); summary.appendChild(editIconBtn); summary.appendChild(removeBtn)
     details.appendChild(summary)
 
     const body = document.createElement('div'); body.className = 'plan-group-body'

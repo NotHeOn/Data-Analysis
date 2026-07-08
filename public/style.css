@@ -620,6 +620,20 @@ table.result-table tr:nth-child(even) {
 
 .plan-group-summary::-webkit-details-marker { display: none; }
 
+.plan-group-drag-handle {
+    display: inline-flex;
+    align-items: center;
+    cursor: grab;
+    color: #ccc;
+    padding-right: 4px;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.plan-group-drag-handle:hover { color: #888; }
+
+.plan-group-accordion.dragging { opacity: 0.35; }
+
 .plan-group-name-span {
     flex: 1;
     font-weight: 600;
