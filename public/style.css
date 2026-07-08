@@ -676,16 +676,34 @@ table.result-table tr:nth-child(even) {
 /* ---- Analysis results ---- */
 
 .analysis-group-result {
-    margin-bottom: 2rem;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    margin-bottom: 0.75rem;
+}
+
+.analysis-group-summary {
+    display: flex;
+    align-items: center;
+    padding: 0.55rem 0.75rem;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    border-radius: 6px;
+}
+
+.analysis-group-summary::-webkit-details-marker { display: none; }
+
+.analysis-group-result[open] > .analysis-group-summary {
+    border-bottom: 1px solid #e8e8e8;
+    border-radius: 6px 6px 0 0;
 }
 
 .analysis-group-title {
-    font-size: 1rem;
+    flex: 1;
+    margin: 0;
+    font-size: 0.95rem;
     font-weight: 600;
     color: #222;
-    margin: 1rem 0 0.4rem;
-    padding-bottom: 0.4rem;
-    border-bottom: 2px solid #e0e0e0;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -695,6 +713,12 @@ table.result-table tr:nth-child(even) {
     font-size: 0.8rem;
     font-weight: 400;
     color: #888;
+}
+
+.analysis-group-body {
+    padding: 0.5rem 0.75rem 0.75rem;
+    overflow: auto;
+    max-height: 600px;
 }
 
 /* ---- Plan selector row ---- */

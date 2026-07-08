@@ -1668,11 +1668,21 @@ async function runAnalysis() {
 
     for (var gi = 0; gi < groups.length; gi++) {
         const group = groups[gi]
-        const groupEl = document.createElement('div')
+        const groupEl = document.createElement('details')
         groupEl.className = 'analysis-group-result'
+        if (gi === 0) groupEl.open = true
+
+        const summaryEl = document.createElement('summary')
+        summaryEl.className = 'analysis-group-summary'
         const titleEl = el('h3', { className: 'analysis-group-title', text: group.name })
+        summaryEl.appendChild(titleEl)
+        groupEl.appendChild(summaryEl)
+
+        const bodyEl = document.createElement('div')
+        bodyEl.className = 'analysis-group-body'
         const loadingEl = el('div', { className: 'trend-loading', text: '查询中...' })
-        groupEl.appendChild(titleEl); groupEl.appendChild(loadingEl)
+        bodyEl.appendChild(loadingEl)
+        groupEl.appendChild(bodyEl)
         resultsEl.appendChild(groupEl)
         try {
             const params = Object.assign({}, basic, {
@@ -1689,11 +1699,11 @@ async function runAnalysis() {
             const data = await resp.json()
             loadingEl.remove()
             if (data.error) {
-                groupEl.appendChild(el('div', { className: 'result-empty', text: '查询失败: ' + data.error }))
+                bodyEl.appendChild(el('div', { className: 'result-empty', text: '查询失败: ' + data.error }))
             } else {
                 const count = (data.result.rows || []).length
                 titleEl.appendChild(el('span', { className: 'analysis-group-count', text: count + ' 条' }))
-                renderCompareTable(groupEl, data.result, group.dimensions || ['query'])
+                renderCompareTable(bodyEl, data.result, group.dimensions || ['query'])
             }
         } catch (e) {
             loadingEl.textContent = '查询失败: ' + e.message

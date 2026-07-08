@@ -19,19 +19,19 @@ const DEFAULT_ANALYSIS_PLANS = [
         id: 'default', name: '默认分析方案',
         groups: [
             {
-                id: 'g1', name: '核心关键词', dimensions: ['query'], searchType: 'web', rowLimit: 100,
+                id: 'g1', name: '排名1~5关键词', dimensions: ['query'], searchType: 'web', rowLimit: 100,
                 orderBy: { metric: 'clicks', direction: 'descending' }, filters: [], deltaFilters: [],
                 metricFilters: [{ metric: 'position', operator: '<=', value: 5 }, { metric: 'impressions', operator: '>=', value: 100 }],
                 previousMetricFilters: []
             },
             {
-                id: 'g2', name: '可冲刺关键词', dimensions: ['query'], searchType: 'web', rowLimit: 100,
+                id: 'g2', name: '排名6~20关键词', dimensions: ['query'], searchType: 'web', rowLimit: 100,
                 orderBy: { metric: 'impressions', direction: 'descending' }, filters: [], deltaFilters: [],
                 metricFilters: [{ metric: 'position', operator: '>=', value: 6 }, { metric: 'position', operator: '<=', value: 20 }, { metric: 'impressions', operator: '>=', value: 50 }],
                 previousMetricFilters: []
             },
             {
-                id: 'g3', name: '长尾关键词', dimensions: ['query'], searchType: 'web', rowLimit: 200,
+                id: 'g3', name: '排名21+关键词', dimensions: ['query'], searchType: 'web', rowLimit: 200,
                 orderBy: { metric: 'impressions', direction: 'descending' }, filters: [], deltaFilters: [],
                 metricFilters: [{ metric: 'position', operator: '>', value: 20 }, { metric: 'impressions', operator: '>=', value: 10 }],
                 previousMetricFilters: []
