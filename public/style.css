@@ -386,6 +386,25 @@ table.result-table th {
     z-index: 1;
 }
 
+table.result-table th.sortable-th {
+    cursor: pointer;
+    user-select: none;
+}
+
+table.result-table th.sortable-th:hover {
+    background: #e2e2e2;
+}
+
+table.result-table th.sort-active {
+    background: #d8e8f8;
+}
+
+.sort-indicator {
+    font-size: 0.75rem;
+    color: #0969da;
+    margin-left: 1px;
+}
+
 table.result-table tr:nth-child(even) {
     background: #fafafa;
 }

@@ -1061,6 +1061,34 @@ function renderResult(fnKey, params, data) {
     }
 }
 
+function makeTableSortable(table) {
+    const ths = Array.from(table.querySelectorAll('thead tr th'))
+    let sortCol = -1, sortAsc = true
+    ths.forEach(function(th, colIdx) {
+        th.classList.add('sortable-th')
+        const ind = document.createElement('span'); ind.className = 'sort-indicator'
+        th.appendChild(ind)
+        th.addEventListener('click', function() {
+            if (sortCol === colIdx) { sortAsc = !sortAsc } else { sortCol = colIdx; sortAsc = true }
+            ths.forEach(function(t, i) {
+                t.querySelector('.sort-indicator').textContent = i === sortCol ? (sortAsc ? ' ↑' : ' ↓') : ''
+                t.classList.toggle('sort-active', i === sortCol)
+            })
+            const tbody = table.querySelector('tbody')
+            Array.from(tbody.querySelectorAll('tr')).sort(function(a, b) {
+                const av = (a.children[colIdx] || {}).dataset.sort
+                const bv = (b.children[colIdx] || {}).dataset.sort
+                if (av === '' && bv === '') return 0
+                if (av === '' || av == null) return 1
+                if (bv === '' || bv == null) return -1
+                const an = parseFloat(av), bn = parseFloat(bv)
+                if (!isNaN(an) && !isNaN(bn)) return sortAsc ? an - bn : bn - an
+                return sortAsc ? av.localeCompare(bv, 'zh') : bv.localeCompare(av, 'zh')
+            }).forEach(function(tr) { tbody.appendChild(tr) })
+        })
+    })
+}
+
 function renderRowsTable(container, rows, dimensions) {
     if (!rows || !rows.length) { container.appendChild(el('div', { className: 'result-empty', text: '无数据' })); return }
     const table = document.createElement('table')
@@ -1076,16 +1104,22 @@ function renderRowsTable(container, rows, dimensions) {
         const tr = document.createElement('tr')
         ;(row.keys || []).forEach(function(k, i) {
             const td = document.createElement('td')
+            td.dataset.sort = k != null ? String(k).toLowerCase() : ''
             td.appendChild(document.createTextNode(formatKey(dimensions[i], k)))
             if (dimensions[i] === 'page') td.appendChild(makePageLink(k))
             if (i === 0) { const tb = makeTrendBtn(row.keys, dimensions); if (tb) td.appendChild(tb) }
             tr.appendChild(td)
         })
-        METRIC_OPTIONS.forEach(function(m) { tr.appendChild(el('td', { text: formatMetricValue(m, row[m]) })) })
+        METRIC_OPTIONS.forEach(function(m) {
+            const td = el('td', { text: formatMetricValue(m, row[m]) })
+            td.dataset.sort = row[m] != null ? row[m] : ''
+            tr.appendChild(td)
+        })
         tbody.appendChild(tr)
     })
     table.appendChild(tbody)
     container.appendChild(table)
+    makeTableSortable(table)
 }
 
 function renderCompareTable(container, result, dimensions) {
@@ -1109,6 +1143,7 @@ function renderCompareTable(container, result, dimensions) {
         const isNew = !!row.isNew
         ;(row.keys || []).forEach(function(k, i) {
             const td = document.createElement('td')
+            td.dataset.sort = k != null ? String(k).toLowerCase() : ''
             td.appendChild(document.createTextNode(formatKey(dimensions[i], k)))
             if (dimensions[i] === 'page') td.appendChild(makePageLink(k))
             if (i === 0 && isNew) td.appendChild(el('span', { className: 'new-row-badge', text: '新' }))
@@ -1117,6 +1152,7 @@ function renderCompareTable(container, result, dimensions) {
         })
         METRIC_OPTIONS.forEach(function(m) {
             const td = document.createElement('td')
+            td.dataset.sort = (row.current && row.current[m] != null) ? row.current[m] : ''
             const cell = el('div', { className: 'metric-cell' })
             cell.appendChild(el('span', { className: 'metric-current', text: formatMetricValue(m, row.current[m]) }))
             if (isNew && m === 'position') {
@@ -1134,6 +1170,7 @@ function renderCompareTable(container, result, dimensions) {
     })
     table.appendChild(tbody)
     container.appendChild(table)
+    makeTableSortable(table)
 }
 
 // ============================================================
