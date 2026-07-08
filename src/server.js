@@ -12,6 +12,41 @@ const publicDir = path.join(__dirname, '../public')
 const dataDir = path.join(__dirname, '../data')
 const presetsPath = path.join(dataDir, 'presets.json')
 const sitesPath = path.join(dataDir, 'sites.json')
+const analysisPlansPath = path.join(dataDir, 'analysis-plans.json')
+
+const DEFAULT_ANALYSIS_PLANS = [
+    {
+        id: 'default', name: '默认分析方案',
+        groups: [
+            {
+                id: 'g1', name: '核心关键词', dimensions: ['query'], searchType: 'web', rowLimit: 100,
+                orderBy: { metric: 'clicks', direction: 'descending' }, filters: [], deltaFilters: [],
+                metricFilters: [{ metric: 'position', operator: '<=', value: 5 }, { metric: 'impressions', operator: '>=', value: 100 }],
+                previousMetricFilters: []
+            },
+            {
+                id: 'g2', name: '可冲刺关键词', dimensions: ['query'], searchType: 'web', rowLimit: 100,
+                orderBy: { metric: 'impressions', direction: 'descending' }, filters: [], deltaFilters: [],
+                metricFilters: [{ metric: 'position', operator: '>=', value: 6 }, { metric: 'position', operator: '<=', value: 20 }, { metric: 'impressions', operator: '>=', value: 50 }],
+                previousMetricFilters: []
+            },
+            {
+                id: 'g3', name: '长尾关键词', dimensions: ['query'], searchType: 'web', rowLimit: 200,
+                orderBy: { metric: 'impressions', direction: 'descending' }, filters: [], deltaFilters: [],
+                metricFilters: [{ metric: 'position', operator: '>', value: 20 }, { metric: 'impressions', operator: '>=', value: 10 }],
+                previousMetricFilters: []
+            }
+        ]
+    }
+]
+
+function readAnalysisPlans() {
+    if (!fs.existsSync(analysisPlansPath)) {
+        writeJsonFile(analysisPlansPath, DEFAULT_ANALYSIS_PLANS)
+        return DEFAULT_ANALYSIS_PLANS
+    }
+    return JSON.parse(fs.readFileSync(analysisPlansPath, 'utf8'))
+}
 
 const FN_MAP = {
     listSites: gsc.listSites,
@@ -152,6 +187,35 @@ const server = http.createServer(async (req, res) => {
                 Object.assign(site, patch)
                 writeJsonFile(sitesPath, sites)
             }
+            return sendJson(res, 200, { ok: true })
+        }
+
+        if (req.method === 'GET' && pathname === '/api/analysis-plans') {
+            return sendJson(res, 200, { plans: readAnalysisPlans() })
+        }
+
+        if (req.method === 'POST' && pathname === '/api/analysis-plans') {
+            const plan = await readBody(req)
+            const plans = readAnalysisPlans()
+            plans.push(plan)
+            writeJsonFile(analysisPlansPath, plans)
+            return sendJson(res, 200, { plan })
+        }
+
+        if (req.method === 'PUT' && pathname.startsWith('/api/analysis-plans/')) {
+            const id = pathname.slice('/api/analysis-plans/'.length)
+            const plan = await readBody(req)
+            const plans = readAnalysisPlans()
+            const idx = plans.findIndex(p => p.id === id)
+            if (idx >= 0) plans[idx] = plan
+            writeJsonFile(analysisPlansPath, plans)
+            return sendJson(res, 200, { ok: true })
+        }
+
+        if (req.method === 'DELETE' && pathname.startsWith('/api/analysis-plans/')) {
+            const id = pathname.slice('/api/analysis-plans/'.length)
+            const plans = readAnalysisPlans().filter(p => p.id !== id)
+            writeJsonFile(analysisPlansPath, plans)
             return sendJson(res, 200, { ok: true })
         }
 

@@ -576,6 +576,117 @@ table.result-table tr:nth-child(even) {
     margin-bottom: 0.3rem;
 }
 
+/* ---- Analysis plan modal ---- */
+
+.plan-modal {
+    background: #fff;
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem 1.5rem;
+    max-width: 680px;
+    width: calc(100vw - 3rem);
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.plan-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #eee;
+}
+
+/* ---- Group accordion ---- */
+
+.plan-group-accordion {
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+}
+
+.plan-group-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+}
+
+.plan-group-summary::-webkit-details-marker { display: none; }
+
+.plan-group-name-input {
+    flex: 1;
+    border: none;
+    font-weight: 600;
+    font-size: 0.9rem;
+    background: transparent;
+    padding: 0;
+    outline: none;
+    cursor: text;
+}
+
+.plan-group-body {
+    padding: 0.75rem 1rem 0.75rem;
+    border-top: 1px solid #f0f0f0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.plan-group-body .field {
+    margin-bottom: 0;
+}
+
+.plan-group-section-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #666;
+    margin-top: 0.25rem;
+}
+
+/* ---- Analysis results ---- */
+
+.analysis-group-result {
+    margin-bottom: 2rem;
+}
+
+.analysis-group-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #222;
+    margin: 1rem 0 0.4rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 2px solid #e0e0e0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.analysis-group-count {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: #888;
+}
+
+/* ---- Plan selector row ---- */
+
+.analysis-plan-selector-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+
+.analysis-plan-selector-row select {
+    flex: 1;
+    min-width: 160px;
+}
+
 /* ---- Presets ---- */
 
 #presets-list {
