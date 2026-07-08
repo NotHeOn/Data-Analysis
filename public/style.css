@@ -618,13 +618,38 @@ table.result-table tr:nth-child(even) {
 
 .plan-group-summary::-webkit-details-marker { display: none; }
 
-.plan-group-name-input {
+.plan-group-name-span {
     flex: 1;
-    border: none;
     font-weight: 600;
     font-size: 0.9rem;
-    background: transparent;
-    padding: 0;
+    color: #222;
+}
+
+.plan-group-edit-btn {
+    display: inline-flex;
+    align-items: center;
+    border: none;
+    background: none;
+    padding: 2px 3px;
+    cursor: pointer;
+    color: #bbb;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.plan-group-edit-btn:hover {
+    color: #0969da;
+    background: #eaf2ff;
+}
+
+.plan-group-name-input {
+    flex: 1;
+    border: 1px solid #0969da;
+    border-radius: 3px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    background: #fff;
+    padding: 1px 4px;
     outline: none;
     cursor: text;
 }

@@ -1589,6 +1589,19 @@ function renderAnalysisPlanSection() {
     const newBtn = document.createElement('button')
     newBtn.type = 'button'; newBtn.textContent = '新建方案'
     newBtn.addEventListener('click', function() { openPlanModal(null) })
+    const copyBtn = document.createElement('button')
+    copyBtn.type = 'button'; copyBtn.textContent = '复制方案'
+    copyBtn.addEventListener('click', function() {
+        const plan = cachedPlans.find(function(p) { return p.id === planSel.value })
+        if (!plan) return
+        const copy = JSON.parse(JSON.stringify(plan))
+        copy.id = Date.now().toString(36)
+        copy.name = plan.name + ' 副本'
+        copy.groups = copy.groups.map(function(g, i) {
+            return Object.assign({}, g, { id: 'g' + Date.now().toString(36) + i })
+        })
+        openPlanModal(copy, true)
+    })
     const delBtn = document.createElement('button')
     delBtn.type = 'button'; delBtn.textContent = '删除方案'
     delBtn.addEventListener('click', async function() {
@@ -1597,7 +1610,7 @@ function renderAnalysisPlanSection() {
         await fetch('/api/analysis-plans/' + plan.id, { method: 'DELETE' })
         await loadAnalysisPlans()
     })
-    selRow.appendChild(planSel); selRow.appendChild(editBtn); selRow.appendChild(newBtn); selRow.appendChild(delBtn)
+    selRow.appendChild(planSel); selRow.appendChild(editBtn); selRow.appendChild(newBtn); selRow.appendChild(copyBtn); selRow.appendChild(delBtn)
     section.appendChild(selRow)
     planSel.addEventListener('change', renderGroupCheckboxes)
     renderGroupCheckboxes()
@@ -1694,7 +1707,9 @@ async function runAnalysis() {
 
 // ---- Plan modal ----
 
-function openPlanModal(plan) {
+function openPlanModal(plan, saveAsNew) {
+    // saveAsNew=true: save as new (POST), used for both "新建" and "复制"
+    const isNew = saveAsNew || !plan
     const overlay = document.createElement('div')
     overlay.className = 'trend-overlay'
     overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove() })
@@ -1706,7 +1721,8 @@ function openPlanModal(plan) {
 
     const header = document.createElement('div')
     header.className = 'trend-modal-header'
-    header.appendChild(el('h3', { className: 'trend-modal-title', text: plan ? '编辑方案' : '新建方案' }))
+    const modalTitle = !plan ? '新建方案' : (isNew ? '复制方案' : '编辑方案')
+    header.appendChild(el('h3', { className: 'trend-modal-title', text: modalTitle }))
     const closeBtn = document.createElement('button')
     closeBtn.type = 'button'; closeBtn.className = 'trend-modal-close'; closeBtn.textContent = '×'
     closeBtn.addEventListener('click', function() { overlay.remove() })
@@ -1752,7 +1768,7 @@ function openPlanModal(plan) {
         const groups = groupEditors.filter(function(e) { return e.el.parentNode }).map(function(e) { return e.read() })
         const planData = { id: plan ? plan.id : Date.now().toString(36), name: name, groups: groups }
         saveBtn.disabled = true; saveBtn.textContent = '保存中...'
-        await saveAnalysisPlan(planData, !plan)
+        await saveAnalysisPlan(planData, isNew)
         overlay.remove()
     })
     footer.appendChild(cancelBtn); footer.appendChild(saveBtn)
@@ -1764,22 +1780,48 @@ function openPlanModal(plan) {
 
 function buildGroupAccordion(group) {
     const details = document.createElement('details')
-    details.className = 'plan-group-accordion'; details.open = true
+    details.className = 'plan-group-accordion'; details.open = false
 
     const summary = document.createElement('summary')
     summary.className = 'plan-group-summary'
+
+    // Click-to-edit name: pencil icon → hidden input toggle
+    const editIconBtn = document.createElement('button')
+    editIconBtn.type = 'button'; editIconBtn.className = 'plan-group-edit-btn'; editIconBtn.title = '重命名'
+    editIconBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.5 L9.5 3.5 L4 9 L1.5 9.5 L2 7 Z"/><line x1="6.5" y1="2.5" x2="8.5" y2="4.5"/></svg>'
+    const nameSpan = document.createElement('span')
+    nameSpan.className = 'plan-group-name-span'; nameSpan.textContent = group.name || '未命名分组'
     const nameInput = document.createElement('input')
-    nameInput.type = 'text'; nameInput.className = 'plan-group-name-input'
+    nameInput.type = 'text'; nameInput.className = 'plan-group-name-input'; nameInput.style.display = 'none'
     nameInput.value = group.name || ''; nameInput.placeholder = '分组名称'
+
+    function enterNameEdit(e) {
+        e.stopPropagation(); e.preventDefault()
+        nameSpan.style.display = 'none'; editIconBtn.style.display = 'none'
+        nameInput.style.display = ''; nameInput.focus(); nameInput.select()
+    }
+    function exitNameEdit() {
+        const val = nameInput.value.trim() || nameSpan.textContent
+        nameInput.value = val; nameSpan.textContent = val
+        nameInput.style.display = 'none'
+        nameSpan.style.display = ''; editIconBtn.style.display = ''
+    }
+    editIconBtn.addEventListener('click', enterNameEdit)
+    nameInput.addEventListener('blur', exitNameEdit)
     nameInput.addEventListener('click', function(e) { e.stopPropagation() })
-    nameInput.addEventListener('keydown', function(e) { e.stopPropagation() })
+    nameInput.addEventListener('keydown', function(e) {
+        e.stopPropagation()
+        if (e.key === 'Enter') { nameInput.blur() }
+        if (e.key === 'Escape') { nameInput.value = nameSpan.textContent; nameInput.blur() }
+    })
+
     const removeBtn = document.createElement('button')
     removeBtn.type = 'button'; removeBtn.textContent = '删除'
     removeBtn.addEventListener('click', function(e) {
         e.preventDefault(); e.stopPropagation()
-        if (confirm('删除分组"' + (nameInput.value || '此分组') + '"？')) details.remove()
+        if (confirm('删除分组"' + nameSpan.textContent + '"？')) details.remove()
     })
-    summary.appendChild(nameInput); summary.appendChild(removeBtn)
+    summary.appendChild(editIconBtn); summary.appendChild(nameSpan); summary.appendChild(nameInput); summary.appendChild(removeBtn)
     details.appendChild(summary)
 
     const body = document.createElement('div'); body.className = 'plan-group-body'
@@ -1850,7 +1892,7 @@ function buildGroupAccordion(group) {
         read: function() {
             return {
                 id: group.id || Date.now().toString(36),
-                name: nameInput.value.trim() || '未命名分组',
+                name: nameInput.value.trim() || nameSpan.textContent || '未命名分组',
                 dimensions: dimCbs.filter(function(cb) { return cb.checked }).map(function(cb) { return cb.value }),
                 searchType: stSel.value,
                 rowLimit: parseInt(rlInput.value) || 100,
