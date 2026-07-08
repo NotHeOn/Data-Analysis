@@ -382,6 +382,7 @@ table.result-table th {
     background: #eee;
     position: sticky;
     top: 0;
+    z-index: 1;
 }
 
 table.result-table tr:nth-child(even) {
