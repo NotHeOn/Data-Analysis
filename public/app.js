@@ -1934,6 +1934,18 @@ function buildGroupFiltersEditor(currentFilters) {
         if (f) opSel.value = f.operator
         const exprIn = document.createElement('input'); exprIn.type = 'text'; exprIn.className = 'filter-expression'; exprIn.placeholder = '筛选值'
         if (f) exprIn.value = f.expression || ''
+        function applyDimMode(dim) {
+            if (dim === 'country') {
+                ensureCountryDatalist()
+                exprIn.setAttribute('list', 'country-datalist')
+                exprIn.placeholder = '输入国家名或代码'
+            } else {
+                exprIn.removeAttribute('list')
+                exprIn.placeholder = '筛选值'
+            }
+        }
+        applyDimMode(dimSel.value)
+        dimSel.addEventListener('change', function() { applyDimMode(dimSel.value) })
         const rm = document.createElement('button'); rm.type = 'button'; rm.textContent = '删除'
         rm.addEventListener('click', function() { row.remove() })
         row.appendChild(dimSel); row.appendChild(opSel); row.appendChild(exprIn); row.appendChild(rm)
@@ -1948,7 +1960,10 @@ function buildGroupFiltersEditor(currentFilters) {
         read: function() {
             return Array.from(rows.querySelectorAll('.filter-row')).map(function(row) {
                 const sels = row.querySelectorAll('select')
-                return { dimension: sels[0].value, operator: sels[1].value, expression: row.querySelector('.filter-expression').value }
+                const dim = sels[0].value
+                let expression = row.querySelector('.filter-expression').value
+                if (dim === 'country' && expression) expression = normalizeCountryExpression(expression)
+                return { dimension: dim, operator: sels[1].value, expression: expression }
             }).filter(function(f) { return f.expression })
         }
     }
