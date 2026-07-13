@@ -46,17 +46,21 @@ function diffRows(currentRows, previousRows) {
 // Capped at VERIFY_LIMIT to avoid excessive API usage.
 const VERIFY_LIMIT = 100
 
-async function verifyMissingRows({ siteUrl, dataState, startDate, endDate, dimensions, missingRows, userFilters, searchType }) {
+async function verifyMissingRows({ siteUrl, dataState, startDate, endDate, dimensions, missingRows, userFilters, dimensionFilterGroups, searchType }) {
     if (!missingRows.length || !dimensions.length) return []
     const toVerify = missingRows.slice(0, VERIFY_LIMIT)
     const results = await Promise.all(toVerify.map(row => {
-        const filters = [
-            ...row.keys.map((val, idx) => ({ dimension: dimensions[idx], operator: 'equals', expression: val })),
-            ...userFilters
-        ]
+        const keyFilters = row.keys.map((val, idx) => ({ dimension: dimensions[idx], operator: 'equals', expression: val }))
+        if (dimensionFilterGroups && dimensionFilterGroups.length) {
+            return queryPerformanceAdvanced({
+                siteUrl, dataState, startDate, endDate, dimensions,
+                searchType, rowLimit: 1, startRow: 0,
+                dimensionFilterGroups: dimensionFilterGroups.map(g => ({ groupType: 'and', filters: keyFilters.concat(g.filters) }))
+            })
+        }
         return queryPerformanceAdvanced({
             siteUrl, dataState, startDate, endDate, dimensions,
-            searchType, rowLimit: 1, startRow: 0, filters
+            searchType, rowLimit: 1, startRow: 0, filters: keyFilters.concat(userFilters)
         })
     }))
     return results.flat()
@@ -117,6 +121,7 @@ async function comparePeriodsAdvanced({
     startRow = 0,
     orderBy,
     filters = [],
+    dimensionFilterGroups,
     metricFilters = [],
     previousMetricFilters = [],
     deltaFilters = []
@@ -124,8 +129,8 @@ async function comparePeriodsAdvanced({
     const previous = previousPeriod(startDate, endDate)
 
     const [currentRows, prevRows] = await Promise.all([
-        queryPerformanceAdvanced({ siteUrl, dataState, startDate, endDate, dimensions, searchType, rowLimit, startRow, orderBy, filters }),
-        queryPerformanceAdvanced({ siteUrl, dataState, startDate: previous.startDate, endDate: previous.endDate, dimensions, searchType, rowLimit, startRow, orderBy, filters })
+        queryPerformanceAdvanced({ siteUrl, dataState, startDate, endDate, dimensions, searchType, rowLimit, startRow, orderBy, filters, dimensionFilterGroups }),
+        queryPerformanceAdvanced({ siteUrl, dataState, startDate: previous.startDate, endDate: previous.endDate, dimensions, searchType, rowLimit, startRow, orderBy, filters, dimensionFilterGroups })
     ])
 
     const prevKeySet = new Set(prevRows.map(r => JSON.stringify(r.keys || [])))
@@ -134,7 +139,7 @@ async function comparePeriodsAdvanced({
     const verifiedRows = await verifyMissingRows({
         siteUrl, dataState,
         startDate: previous.startDate, endDate: previous.endDate,
-        dimensions, missingRows, userFilters: filters, searchType
+        dimensions, missingRows, userFilters: filters, dimensionFilterGroups, searchType
     })
 
     const completePrevRows = [...prevRows, ...verifiedRows]

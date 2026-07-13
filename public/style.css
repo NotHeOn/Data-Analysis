@@ -752,11 +752,55 @@ table.result-table tr:nth-child(even) {
     margin-bottom: 0;
 }
 
+.filter-join-sel {
+    font-size: 0.78rem;
+    padding: 0.1rem 0.25rem;
+    border-color: #ccc;
+    color: #0969da;
+    font-weight: 600;
+    width: 54px;
+    flex-shrink: 0;
+}
+
 .plan-group-section-label {
     font-size: 0.8rem;
     font-weight: 600;
     color: #666;
     margin-top: 0.25rem;
+}
+
+/* ---- Global filters (analysis tab) ---- */
+
+.analysis-global-filters-details {
+    margin-top: 0.75rem;
+    border-top: 1px solid #eee;
+    padding-top: 0.25rem;
+}
+
+.analysis-global-filters-summary {
+    cursor: pointer;
+    user-select: none;
+    padding: 0.4rem 0;
+    font-size: 0.88rem;
+    color: #555;
+    list-style: none;
+}
+
+.analysis-global-filters-summary::-webkit-details-marker { display: none; }
+
+.analysis-global-filters-summary::before {
+    content: '▶ ';
+    font-size: 0.7rem;
+}
+
+.analysis-global-filters-details[open] > .analysis-global-filters-summary::before {
+    content: '▼ ';
+}
+
+.analysis-global-filters-summary:hover { color: #222; }
+
+.analysis-global-filters-details .filter-rows-container {
+    padding-top: 0.4rem;
 }
 
 /* ---- Analysis results ---- */
