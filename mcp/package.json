@@ -1,0 +1,13 @@
+{
+  "name": "gsc-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server that exposes GSC query tools to Claude",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --env-file=.env server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  }
+}
