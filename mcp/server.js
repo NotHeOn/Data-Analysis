@@ -40,6 +40,16 @@ function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
 
+// Merge dimension filters: group-level overrides global for same dimension, stacks for different
+function mergeFilters(globalFilters, groupFilters) {
+    const gf = globalFilters || []
+    const lf = groupFilters || []
+    if (!gf.length) return lf
+    if (!lf.length) return gf
+    const groupDims = new Set(lf.map(f => f.dimension))
+    return gf.filter(f => !groupDims.has(f.dimension)).concat(lf)
+}
+
 function withResultLimit(rows, limit) {
     const total = rows.length
     const cap = Math.min(Math.max(1, limit || DEFAULT_RESULT_LIMIT), MAX_RESULT_LIMIT)
@@ -208,6 +218,40 @@ const TOOLS = [
         }
     },
     {
+        name: 'run_preset',
+        description: `Execute a saved preset by ID for a given site and date range. ` +
+            `The preset provides all query configuration (dimensions, filters, thresholds) — you only need to supply siteUrl and dates. ` +
+            `Use list_presets to find preset IDs. ` +
+            `Optionally pass filters to narrow by market/device/etc. on top of the preset's own filters (same-dimension overrides, different-dimension stacks). ` +
+            `DATA DELAY: ${DATA_DELAY_NOTE}`,
+        inputSchema: {
+            type: 'object',
+            properties: {
+                presetId: { type: 'string', description: 'Preset ID from list_presets.' },
+                siteUrl: { type: 'string', description: 'GSC site URL. Use list_sites to find valid values.' },
+                startDate: { type: 'string', description: 'Start date (YYYY-MM-DD). For final data, use ≤ today minus 3 days (UTC+8).' },
+                endDate: { type: 'string', description: 'End date (YYYY-MM-DD). For final data, use ≤ today minus 3 days (UTC+8).' },
+                dataState: { type: 'string', enum: ['final', 'all'], description: 'Overrides preset\'s dataState if provided.' },
+                filters: {
+                    type: 'array',
+                    description: 'Additional dimension filters merged with the preset\'s own filters (e.g. country=BRA to narrow to Brazil). Same-dimension entry overrides the preset\'s; different-dimension entry stacks.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            dimension: { type: 'string', enum: ['query', 'page', 'country', 'device', 'searchAppearance'] },
+                            operator: { type: 'string', enum: ['contains', 'notContains', 'equals', 'notEquals', 'includingRegex', 'excludingRegex'] },
+                            expression: { type: 'string' }
+                        },
+                        required: ['dimension', 'operator', 'expression']
+                    },
+                    default: []
+                },
+                resultLimit: { type: 'number', description: `Max rows to return (default ${DEFAULT_RESULT_LIMIT}, max ${MAX_RESULT_LIMIT}).` }
+            },
+            required: ['presetId', 'siteUrl', 'startDate', 'endDate']
+        }
+    },
+    {
         name: 'save_analysis_plan',
         description: 'Create a new analysis plan or overwrite an existing one. ' +
             'Each group defines an independent compare_periods query with its own dimensions, filters, and metric thresholds. ' +
@@ -340,6 +384,20 @@ const TOOLS = [
                     items: { type: 'string' },
                     description: 'Subset of group IDs to run. Omit to run all groups in the plan.'
                 },
+                globalFilters: {
+                    type: 'array',
+                    description: 'Dimension filters applied to every group. Group-level filters for the same dimension override these; different-dimension filters stack (CSS-like). Example: [{ dimension: "country", operator: "equals", expression: "BRA" }] to narrow all groups to Brazil.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            dimension: { type: 'string', enum: ['query', 'page', 'country', 'device', 'searchAppearance'] },
+                            operator: { type: 'string', enum: ['contains', 'notContains', 'equals', 'notEquals', 'includingRegex', 'excludingRegex'] },
+                            expression: { type: 'string' }
+                        },
+                        required: ['dimension', 'operator', 'expression']
+                    },
+                    default: []
+                },
                 resultLimit: { type: 'number', description: `Max rows per group to return (default ${DEFAULT_RESULT_LIMIT}, max ${MAX_RESULT_LIMIT}). Each group result includes _meta with truncation info.` }
             },
             required: ['planId', 'siteUrl', 'startDate', 'endDate']
@@ -461,6 +519,31 @@ async function callTool(name, args) {
             return { ok: true, deleted: args.id }
         }
 
+        case 'run_preset': {
+            const presets = readJson(presetsPath)
+            const preset = presets.find(p => p.id === args.presetId)
+            if (!preset) throw new Error(`Preset '${args.presetId}' not found`)
+
+            const effectiveFilters = mergeFilters(args.filters || [], preset.params.filters || [])
+            const params = Object.assign({}, preset.params, {
+                siteUrl: args.siteUrl,
+                startDate: args.startDate,
+                endDate: args.endDate,
+                dataState: args.dataState || preset.params.dataState || 'final',
+                filters: effectiveFilters
+            })
+            delete params.dateShortcut
+            delete params.startRow
+
+            if (preset.fn === 'queryPerformanceAdvanced') {
+                const rows = await query.queryPerformanceAdvanced(params)
+                return withResultLimit(rows, args.resultLimit)
+            } else {
+                const r = await compare.comparePeriodsAdvanced(params)
+                return { currentPeriod: r.currentPeriod, previousPeriod: r.previousPeriod, ...withResultLimit(r.rows || [], args.resultLimit) }
+            }
+        }
+
         case 'list_analysis_plans':
             return readJson(plansPath)
 
@@ -535,7 +618,7 @@ async function callTool(name, args) {
                     searchType: rg.searchType || 'web',
                     rowLimit: rg.rowLimit || 100,
                     orderBy: rg.orderBy,
-                    filters: rg.filters || [],
+                    filters: mergeFilters(args.globalFilters || [], rg.filters || []),
                     metricFilters: rg.metricFilters || [],
                     previousMetricFilters: rg.previousMetricFilters || [],
                     deltaFilters: rg.deltaFilters || []
