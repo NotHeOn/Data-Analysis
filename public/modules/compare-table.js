@@ -93,6 +93,29 @@ export function renderRowsTable(container, rows, dimensions) {
     makeTableSortable(table)
 }
 
+var PCT_CHANGE_METRICS = ['clicks', 'impressions', 'ctr']
+var PCT_CHANGE_LABELS = { clicks: '点击变化%', impressions: '展现变化%', ctr: '点击率变化%' }
+
+function calcPctChange(current, previous) {
+    if (current == null || previous == null) return null
+    if (previous === 0) return current === 0 ? 0 : null
+    return (current - previous) / Math.abs(previous)
+}
+
+function formatPctChange(value) {
+    if (value == null) return '—'
+    var pct = (value * 100).toFixed(2)
+    if (value > 0) return '+' + pct + '%'
+    if (value < 0) return pct + '%'
+    return '0.00%'
+}
+
+function pctChangeClass(metric, value) {
+    if (value == null || value === 0) return 'neutral'
+    if (metric === 'position') return value < 0 ? 'positive' : 'negative'
+    return value > 0 ? 'positive' : 'negative'
+}
+
 export function renderCompareTable(container, result, dimensions, trendParams) {
     container.appendChild(el('div', { className: 'result-meta',
         text: '当期: ' + result.currentPeriod.startDate + ' ~ ' + result.currentPeriod.endDate +
@@ -105,7 +128,12 @@ export function renderCompareTable(container, result, dimensions, trendParams) {
     const thead = document.createElement('thead')
     const headRow = document.createElement('tr')
     dimensions.forEach(function(d) { headRow.appendChild(el('th', { text: DIMENSION_LABELS[d] || d })) })
-    METRIC_OPTIONS.forEach(function(m) { headRow.appendChild(el('th', { text: METRIC_LABELS[m] })) })
+    METRIC_OPTIONS.forEach(function(m) {
+        headRow.appendChild(el('th', { text: METRIC_LABELS[m] }))
+        if (PCT_CHANGE_METRICS.indexOf(m) >= 0) {
+            headRow.appendChild(el('th', { text: PCT_CHANGE_LABELS[m] }))
+        }
+    })
     thead.appendChild(headRow)
     table.appendChild(thead)
     const tbody = document.createElement('tbody')
@@ -136,6 +164,18 @@ export function renderCompareTable(container, result, dimensions, trendParams) {
             const prevDisplay = isNew && m === 'position' ? '—' : formatMetricValue(m, row.previous ? row.previous[m] : 0)
             td.appendChild(el('div', { className: 'metric-previous', text: '上期 ' + prevDisplay }))
             tr.appendChild(td)
+
+            if (PCT_CHANGE_METRICS.indexOf(m) >= 0) {
+                const pctTd = document.createElement('td')
+                var curVal = row.current ? row.current[m] : null
+                var prevVal = row.previous ? row.previous[m] : null
+                var pctVal = isNew ? null : calcPctChange(curVal, prevVal)
+                pctTd.dataset.sort = pctVal != null ? pctVal : ''
+                var pctText = isNew ? '—' : formatPctChange(pctVal)
+                var cls = isNew ? 'neutral' : pctChangeClass(m, pctVal)
+                pctTd.appendChild(el('span', { className: 'metric-delta ' + cls, text: pctText }))
+                tr.appendChild(pctTd)
+            }
         })
         tbody.appendChild(tr)
     })
