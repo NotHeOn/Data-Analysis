@@ -119,6 +119,20 @@ const TOOLS = [
                         direction: { type: 'string', enum: ['ascending', 'descending'] }
                     }
                 },
+                filters: {
+                    type: 'array',
+                    description: 'Dimension filters applied at the GSC API level (e.g. country=BRA, page contains /blog/, query contains keyword).',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            dimension: { type: 'string', enum: ['query', 'page', 'country', 'device', 'searchAppearance'] },
+                            operator: { type: 'string', enum: ['contains', 'notContains', 'equals', 'notEquals', 'includingRegex', 'excludingRegex'] },
+                            expression: { type: 'string' }
+                        },
+                        required: ['dimension', 'operator', 'expression']
+                    },
+                    default: []
+                },
                 resultLimit: { type: 'number', description: `Max rows to return after all filtering (default ${DEFAULT_RESULT_LIMIT}, max ${MAX_RESULT_LIMIT}). When truncated, the response includes _meta.hint with refinement suggestions.` }
             },
             required: ['siteUrl', 'startDate', 'endDate']
@@ -150,6 +164,20 @@ const TOOLS = [
                         metric: { type: 'string', enum: ['clicks', 'impressions', 'ctr', 'position'] },
                         direction: { type: 'string', enum: ['ascending', 'descending'] }
                     }
+                },
+                filters: {
+                    type: 'array',
+                    description: 'Dimension filters applied at the GSC API level (e.g. country=BRA to restrict to Brazil, page contains /blog/, query contains keyword).',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            dimension: { type: 'string', enum: ['query', 'page', 'country', 'device', 'searchAppearance'] },
+                            operator: { type: 'string', enum: ['contains', 'notContains', 'equals', 'notEquals', 'includingRegex', 'excludingRegex'] },
+                            expression: { type: 'string' }
+                        },
+                        required: ['dimension', 'operator', 'expression']
+                    },
+                    default: []
                 },
                 metricFilters: {
                     type: 'array',
@@ -485,7 +513,8 @@ async function callTool(name, args) {
                 searchType: args.searchType || 'web',
                 rowLimit: args.rowLimit || 100,
                 dataState: args.dataState || 'final',
-                orderBy: args.orderBy
+                orderBy: args.orderBy,
+                filters: args.filters || []
             })
             return withResultLimit(rows, args.resultLimit)
         }
@@ -500,6 +529,7 @@ async function callTool(name, args) {
                 rowLimit: args.rowLimit || 100,
                 dataState: args.dataState || 'final',
                 orderBy: args.orderBy,
+                filters: args.filters || [],
                 metricFilters: args.metricFilters || []
             })
             return { currentPeriod: r.currentPeriod, previousPeriod: r.previousPeriod, ...withResultLimit(r.rows || [], args.resultLimit) }
