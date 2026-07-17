@@ -4,5 +4,6 @@ export const state = {
     compareMode: false,
     lastQueryParams: null,
     cachedPlans: [],
+    cachedPresets: [],
     globalFiltersEditor: null
 }

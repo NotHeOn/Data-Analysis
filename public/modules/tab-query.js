@@ -393,6 +393,7 @@ export async function savePreset() {
     if (!name) { alert('请输入预设名字'); return }
     const fn = determineFn()
     const params = Object.assign({}, readBasicParams(), readAdvancedParams())
+    delete params.siteUrl
     if (state.lastDateShortcut) {
         params.dateShortcut = state.lastDateShortcut
         delete params.startDate
@@ -408,7 +409,9 @@ export async function savePreset() {
 }
 
 function applyPreset(preset) {
+    const currentSiteUrl = readSiteUrl()
     const params = Object.assign({}, preset.params)
+    if (currentSiteUrl) params.siteUrl = currentSiteUrl
     if (params.dateShortcut) {
         state.lastDateShortcut = params.dateShortcut
         const range = dateRangeFromShortcut(params.dateShortcut.days, params.dataState || 'all')

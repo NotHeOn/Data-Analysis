@@ -21,6 +21,7 @@ const query = require('../src/services/query.js')
 const dataDir = path.join(__dirname, '../data')
 const sitesPath = path.join(dataDir, 'sites.json')
 const plansPath = path.join(dataDir, 'analysis-plans.json')
+const presetsPath = path.join(dataDir, 'presets.json')
 
 const PORT = Number(process.env.MCP_PORT) || 3301
 const DEFAULT_RESULT_LIMIT = Number(process.env.DEFAULT_RESULT_LIMIT) || 50
@@ -162,6 +163,51 @@ const TOOLS = [
         inputSchema: { type: 'object', properties: {}, required: [] }
     },
     {
+        name: 'list_presets',
+        description: 'List all saved query presets. Presets are reusable site-agnostic query configurations (dimensions, filters, metric thresholds) that can be applied to any site. They can also be referenced as groups within analysis plans.',
+        inputSchema: { type: 'object', properties: {}, required: [] }
+    },
+    {
+        name: 'save_preset',
+        description: 'Create a new query preset or overwrite an existing one. Presets are site-agnostic — do not include siteUrl. Use fn=comparePeriodsAdvanced for comparison queries or fn=queryPerformanceAdvanced for single-period queries.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                id: { type: 'string', description: 'Preset ID. Omit to auto-generate; provide an existing ID to overwrite.' },
+                name: { type: 'string', description: 'Human-readable preset name.' },
+                fn: { type: 'string', enum: ['comparePeriodsAdvanced', 'queryPerformanceAdvanced'], description: 'Which query function this preset uses.' },
+                params: {
+                    type: 'object',
+                    description: 'Query parameters — same fields as compare_periods or query_performance. Do NOT include siteUrl (site is selected at query time).',
+                    properties: {
+                        dimensions: { type: 'array', items: { type: 'string', enum: ['query', 'page', 'country', 'device', 'date', 'searchAppearance'] } },
+                        searchType: { type: 'string', enum: ['web', 'image', 'video', 'news', 'discover', 'googleNews'] },
+                        rowLimit: { type: 'number' },
+                        dataState: { type: 'string', enum: ['final', 'all'] },
+                        orderBy: { type: 'object', properties: { metric: { type: 'string' }, direction: { type: 'string' } } },
+                        filters: { type: 'array', items: { type: 'object' } },
+                        metricFilters: { type: 'array', items: { type: 'object' } },
+                        previousMetricFilters: { type: 'array', items: { type: 'object' } },
+                        deltaFilters: { type: 'array', items: { type: 'object' } },
+                        dateShortcut: { type: 'object', description: 'Relative date shortcut for UI use (e.g. { label: "近7天", days: 7 }). Optional, ignored by run_analysis_plan.' }
+                    }
+                }
+            },
+            required: ['name', 'fn', 'params']
+        }
+    },
+    {
+        name: 'delete_preset',
+        description: 'Permanently delete a query preset by ID. Note: analysis plan groups that reference this preset via presetId will fail when run. Use list_presets to find the ID first.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                id: { type: 'string', description: 'Preset ID to delete.' }
+            },
+            required: ['id']
+        }
+    },
+    {
         name: 'save_analysis_plan',
         description: 'Create a new analysis plan or overwrite an existing one. ' +
             'Each group defines an independent compare_periods query with its own dimensions, filters, and metric thresholds. ' +
@@ -183,6 +229,7 @@ const TOOLS = [
                         properties: {
                             id: { type: 'string', description: 'Group ID. Omit to auto-generate.' },
                             name: { type: 'string', description: 'Group label shown in results.' },
+                            presetId: { type: 'string', description: 'Reference a saved preset by ID. When set, the group uses that preset\'s params at runtime. Provide deltaFilters to add delta-based filtering on top. All other group fields are ignored when presetId is set.' },
                             dimensions: {
                                 type: 'array',
                                 items: { type: 'string', enum: ['query', 'page', 'country', 'device', 'date', 'searchAppearance'] },
@@ -387,6 +434,33 @@ async function callTool(name, args) {
             return { currentPeriod: r.currentPeriod, previousPeriod: r.previousPeriod, ...withResultLimit(r.rows || [], args.resultLimit) }
         }
 
+        case 'list_presets':
+            return readJson(presetsPath)
+
+        case 'save_preset': {
+            const presets = readJson(presetsPath)
+            const isNew = !args.id || !presets.some(p => p.id === args.id)
+            const presetId = isNew ? generateId() : args.id
+            const params = Object.assign({}, args.params)
+            delete params.siteUrl
+            const preset = { id: presetId, name: args.name, fn: args.fn, params }
+            if (isNew) {
+                presets.push(preset)
+            } else {
+                const idx = presets.findIndex(p => p.id === presetId)
+                presets[idx] = preset
+            }
+            writeJson(presetsPath, presets)
+            return { ok: true, action: isNew ? 'created' : 'updated', preset }
+        }
+
+        case 'delete_preset': {
+            const presets = readJson(presetsPath)
+            if (!presets.some(p => p.id === args.id)) throw new Error(`Preset '${args.id}' not found`)
+            writeJson(presetsPath, presets.filter(p => p.id !== args.id))
+            return { ok: true, deleted: args.id }
+        }
+
         case 'list_analysis_plans':
             return readJson(plansPath)
 
@@ -397,18 +471,23 @@ async function callTool(name, args) {
             const plan = {
                 id: planId,
                 name: args.name,
-                groups: (args.groups || []).map(g => ({
-                    id: g.id || generateId(),
-                    name: g.name,
-                    dimensions: g.dimensions || ['query'],
-                    searchType: g.searchType || 'web',
-                    rowLimit: g.rowLimit || 100,
-                    orderBy: g.orderBy || undefined,
-                    filters: g.filters || [],
-                    metricFilters: g.metricFilters || [],
-                    previousMetricFilters: g.previousMetricFilters || [],
-                    deltaFilters: g.deltaFilters || []
-                }))
+                groups: (args.groups || []).map(g => {
+                    if (g.presetId) {
+                        return { id: g.id || generateId(), name: g.name, presetId: g.presetId, deltaFilters: g.deltaFilters || [] }
+                    }
+                    return {
+                        id: g.id || generateId(),
+                        name: g.name,
+                        dimensions: g.dimensions || ['query'],
+                        searchType: g.searchType || 'web',
+                        rowLimit: g.rowLimit || 100,
+                        orderBy: g.orderBy || undefined,
+                        filters: g.filters || [],
+                        metricFilters: g.metricFilters || [],
+                        previousMetricFilters: g.previousMetricFilters || [],
+                        deltaFilters: g.deltaFilters || []
+                    }
+                })
             }
             if (isNew) {
                 plans.push(plan)
@@ -430,6 +509,7 @@ async function callTool(name, args) {
 
         case 'run_analysis_plan': {
             const plans = readJson(plansPath)
+            const presets = readJson(presetsPath)
             const plan = plans.find(p => p.id === args.planId)
             if (!plan) throw new Error(`Plan '${args.planId}' not found`)
 
@@ -440,23 +520,30 @@ async function callTool(name, args) {
 
             const groupResults = []
             for (const group of groups) {
+                let rg = group
+                if (group.presetId) {
+                    const preset = presets.find(p => p.id === group.presetId)
+                    if (!preset) throw new Error(`Preset '${group.presetId}' not found (referenced by group '${group.name}')`)
+                    rg = Object.assign({}, preset.params, { id: group.id, name: group.name, deltaFilters: group.deltaFilters || [] })
+                }
                 const r = await compare.comparePeriodsAdvanced({
                     siteUrl: args.siteUrl,
                     startDate: args.startDate,
                     endDate: args.endDate,
                     dataState: args.dataState || 'final',
-                    dimensions: group.dimensions || ['query'],
-                    searchType: group.searchType || 'web',
-                    rowLimit: group.rowLimit || 100,
-                    orderBy: group.orderBy,
-                    filters: group.filters || [],
-                    metricFilters: group.metricFilters || [],
-                    previousMetricFilters: group.previousMetricFilters || [],
-                    deltaFilters: group.deltaFilters || []
+                    dimensions: rg.dimensions || ['query'],
+                    searchType: rg.searchType || 'web',
+                    rowLimit: rg.rowLimit || 100,
+                    orderBy: rg.orderBy,
+                    filters: rg.filters || [],
+                    metricFilters: rg.metricFilters || [],
+                    previousMetricFilters: rg.previousMetricFilters || [],
+                    deltaFilters: rg.deltaFilters || []
                 })
                 groupResults.push({
-                    group: group.name,
-                    groupId: group.id,
+                    group: rg.name,
+                    groupId: rg.id,
+                    ...(group.presetId && { presetId: group.presetId }),
                     currentPeriod: r.currentPeriod,
                     previousPeriod: r.previousPeriod,
                     ...withResultLimit(r.rows || [], args.resultLimit)

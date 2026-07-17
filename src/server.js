@@ -48,6 +48,23 @@ function readAnalysisPlans() {
     return JSON.parse(fs.readFileSync(analysisPlansPath, 'utf8'))
 }
 
+function migratePresets() {
+    if (!fs.existsSync(presetsPath)) return
+    const presets = readJsonFile(presetsPath)
+    let changed = false
+    for (const p of presets) {
+        if (p.params && p.params.siteUrl !== undefined) {
+            delete p.params.siteUrl
+            changed = true
+        }
+    }
+    if (changed) {
+        writeJsonFile(presetsPath, presets)
+        console.log('[migrate] Stripped siteUrl from presets.json')
+    }
+}
+migratePresets()
+
 const FN_MAP = {
     listSites: gsc.listSites,
     queryPerformanceSimple: gsc.queryPerformanceSimple,

@@ -8,8 +8,12 @@ import { buildDeltaFiltersEditor } from './params/delta-filters.js'
 import { renderCompareTable } from './compare-table.js'
 
 export async function loadAnalysisPlans() {
-    const data = await fetch('/api/analysis-plans').then(function(r) { return r.json() })
-    state.cachedPlans = data.plans || []
+    const [plansData, presetsData] = await Promise.all([
+        fetch('/api/analysis-plans').then(function(r) { return r.json() }),
+        fetch('/api/presets').then(function(r) { return r.json() })
+    ])
+    state.cachedPlans = plansData.plans || []
+    state.cachedPresets = presetsData.presets || []
     renderAnalysisPlanSection()
 }
 
@@ -275,15 +279,25 @@ async function runAnalysis() {
         groupEl.appendChild(bodyEl)
         resultsEl.appendChild(groupEl)
         try {
+            let rg = group
+            if (group.presetId) {
+                const preset = (state.cachedPresets || []).find(function(p) { return p.id === group.presetId })
+                if (!preset) {
+                    loadingEl.remove()
+                    bodyEl.appendChild(el('div', { className: 'result-empty', text: '预设 "' + group.presetId + '" 不存在，请重新配置分组' }))
+                    continue
+                }
+                rg = Object.assign({}, preset.params, { id: group.id, name: group.name, deltaFilters: group.deltaFilters || [] })
+            }
             const params = Object.assign({}, basic, {
-                dimensions: group.dimensions || ['query'],
-                searchType: group.searchType || 'web',
-                rowLimit: group.rowLimit || 100,
-                orderBy: group.orderBy,
-                ...buildEffectiveFilters(globalFilters, group.filters || []),
-                metricFilters: group.metricFilters || [],
-                previousMetricFilters: group.previousMetricFilters || [],
-                deltaFilters: group.deltaFilters || []
+                dimensions: rg.dimensions || ['query'],
+                searchType: rg.searchType || 'web',
+                rowLimit: rg.rowLimit || 100,
+                orderBy: rg.orderBy,
+                ...buildEffectiveFilters(globalFilters, rg.filters || []),
+                metricFilters: rg.metricFilters || [],
+                previousMetricFilters: rg.previousMetricFilters || [],
+                deltaFilters: rg.deltaFilters || []
             })
             const resp = await fetch('/api/call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fn: 'comparePeriodsAdvanced', params: params }) })
             const data = await resp.json()
@@ -293,7 +307,7 @@ async function runAnalysis() {
             } else {
                 const count = (data.result.rows || []).length
                 titleEl.appendChild(el('span', { className: 'analysis-group-count', text: count + ' 条' }))
-                renderCompareTable(bodyEl, data.result, group.dimensions || ['query'], params)
+                renderCompareTable(bodyEl, data.result, rg.dimensions || ['query'], params)
             }
         } catch (e) {
             loadingEl.textContent = '查询失败: ' + e.message
@@ -303,7 +317,9 @@ async function runAnalysis() {
     if (runBtn) { runBtn.disabled = false; runBtn.textContent = '执行分析' }
 }
 
-function openPlanModal(plan, saveAsNew) {
+async function openPlanModal(plan, saveAsNew) {
+    const presetsData = await fetch('/api/presets').then(function(r) { return r.json() })
+    state.cachedPresets = presetsData.presets || []
     const isNew = saveAsNew || !plan
     const overlay = document.createElement('div')
     overlay.className = 'trend-overlay'
@@ -373,7 +389,14 @@ function openPlanModal(plan, saveAsNew) {
     addGroupBtn.addEventListener('click', function() {
         addGroupEditor({ id: 'g' + Date.now().toString(36), name: '新分组', dimensions: ['query'], searchType: 'web', rowLimit: 100, filters: [], metricFilters: [], previousMetricFilters: [], deltaFilters: [] })
     })
+    const addFromPresetBtn = document.createElement('button')
+    addFromPresetBtn.type = 'button'; addFromPresetBtn.textContent = '+ 从预设添加'
+    addFromPresetBtn.style.marginTop = '0.5rem'; addFromPresetBtn.style.marginLeft = '0.5rem'
+    addFromPresetBtn.addEventListener('click', function() {
+        addGroupEditor({ id: 'g' + Date.now().toString(36), name: '新分组', presetId: (state.cachedPresets[0] && state.cachedPresets[0].id) || '', deltaFilters: [] })
+    })
     modal.appendChild(addGroupBtn)
+    modal.appendChild(addFromPresetBtn)
 
     const footer = document.createElement('div'); footer.className = 'plan-modal-footer'
     const cancelBtn = document.createElement('button')
@@ -454,61 +477,117 @@ function buildGroupAccordion(group) {
     const body = document.createElement('div'); body.className = 'plan-group-body'
     bodyWrap.appendChild(body)
 
-    const dimsField = document.createElement('div'); dimsField.className = 'field'
-    dimsField.appendChild(el('span', { text: '维度' }))
-    const dimsCbWrap = document.createElement('div'); dimsCbWrap.className = 'checkbox-group'
-    const dimCbs = []
-    ;['query', 'page', 'country', 'device', 'date', 'searchAppearance'].forEach(function(d) {
-        const lbl = document.createElement('label'); lbl.className = 'checkbox-item'
-        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = d
-        cb.checked = (group.dimensions || ['query']).includes(d)
-        dimCbs.push(cb)
-        lbl.appendChild(cb); lbl.appendChild(document.createTextNode(DIMENSION_LABELS[d] || d))
-        dimsCbWrap.appendChild(lbl)
-    })
-    dimsField.appendChild(dimsCbWrap); body.appendChild(dimsField)
+    // Mode toggle: 自定义 | 引用预设
+    let mode = group.presetId ? 'preset' : 'custom'
+    const modeTabs = document.createElement('div'); modeTabs.className = 'group-mode-tabs'
+    const customTab = document.createElement('button'); customTab.type = 'button'; customTab.textContent = '自定义'
+    const presetTab = document.createElement('button'); presetTab.type = 'button'; presetTab.textContent = '引用预设'
+    modeTabs.appendChild(customTab); modeTabs.appendChild(presetTab)
+    body.appendChild(modeTabs)
 
-    const srRow = document.createElement('div'); srRow.style.display = 'flex'; srRow.style.gap = '1rem'
-    const stField = document.createElement('div'); stField.className = 'field'; stField.style.margin = '0'
-    stField.appendChild(el('span', { text: '搜索类型' }))
-    const stSel = document.createElement('select')
-    ;['web', 'image', 'video', 'news', 'discover', 'googleNews'].forEach(function(t) {
-        const opt = document.createElement('option'); opt.value = t; opt.textContent = t; stSel.appendChild(opt)
-    })
-    stSel.value = group.searchType || 'web'
-    stField.appendChild(stSel); srRow.appendChild(stField)
-    const rlField = document.createElement('div'); rlField.className = 'field'; rlField.style.margin = '0'
-    rlField.appendChild(el('span', { text: '最大行数' }))
-    const rlInput = document.createElement('input'); rlInput.type = 'number'; rlInput.min = '1'; rlInput.max = '25000'
-    rlInput.value = group.rowLimit || 100; rlInput.style.width = '80px'
-    rlField.appendChild(rlInput); srRow.appendChild(rlField)
-    body.appendChild(srRow)
+    const editorWrap = document.createElement('div')
+    body.appendChild(editorWrap)
 
-    const obField = document.createElement('div'); obField.className = 'field'
-    obField.appendChild(el('span', { text: '排序' }))
-    const obRow = document.createElement('div'); obRow.style.display = 'flex'; obRow.style.gap = '0.5rem'
-    const obMetSel = document.createElement('select')
-    METRIC_OPTIONS.forEach(function(m) {
-        const opt = document.createElement('option'); opt.value = m; opt.textContent = METRIC_LABELS[m] || m; obMetSel.appendChild(opt)
-    })
-    obMetSel.value = (group.orderBy && group.orderBy.metric) || 'clicks'
-    const obDirSel = document.createElement('select')
-    ;[['descending', '降序'], ['ascending', '升序']].forEach(function(p) {
-        const opt = document.createElement('option'); opt.value = p[0]; opt.textContent = p[1]; obDirSel.appendChild(opt)
-    })
-    obDirSel.value = (group.orderBy && group.orderBy.direction) || 'descending'
-    obRow.appendChild(obMetSel); obRow.appendChild(obDirSel)
-    obField.appendChild(obRow); body.appendChild(obField)
+    let eds = {}
 
-    body.appendChild(el('div', { className: 'plan-group-section-label', text: '维度筛选' }))
-    body.appendChild(el('div', { className: 'field-hint', text: '多行条件支持 AND/OR；全局筛选同维度被分组覆盖，不同维度叠加' }))
-    const fe = buildDimFiltersEditor(group.filters || []); body.appendChild(fe.el)
-    body.appendChild(el('div', { className: 'plan-group-section-label', text: '当期指标筛选' }))
-    const mfe = buildMetricFiltersEditor(group.metricFilters || []); body.appendChild(mfe.el)
-    body.appendChild(el('div', { className: 'plan-group-section-label', text: '上期指标筛选' }))
-    const pmfe = buildMetricFiltersEditor(group.previousMetricFilters || []); body.appendChild(pmfe.el)
-    body.appendChild(el('div', { className: 'plan-group-section-label', text: '变化筛选' }))
-    const dfe = buildDeltaFiltersEditor(group.deltaFilters || []); body.appendChild(dfe.el)
+    function renderCustomEditor(g) {
+        editorWrap.innerHTML = ''
+        customTab.classList.add('active'); presetTab.classList.remove('active')
+
+        const dimsField = document.createElement('div'); dimsField.className = 'field'
+        dimsField.appendChild(el('span', { text: '维度' }))
+        const dimsCbWrap = document.createElement('div'); dimsCbWrap.className = 'checkbox-group'
+        const dimCbs = []
+        ;['query', 'page', 'country', 'device', 'date', 'searchAppearance'].forEach(function(d) {
+            const lbl = document.createElement('label'); lbl.className = 'checkbox-item'
+            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = d
+            cb.checked = (g.dimensions || ['query']).includes(d)
+            dimCbs.push(cb)
+            lbl.appendChild(cb); lbl.appendChild(document.createTextNode(DIMENSION_LABELS[d] || d))
+            dimsCbWrap.appendChild(lbl)
+        })
+        dimsField.appendChild(dimsCbWrap); editorWrap.appendChild(dimsField)
+
+        const srRow = document.createElement('div'); srRow.style.display = 'flex'; srRow.style.gap = '1rem'
+        const stField = document.createElement('div'); stField.className = 'field'; stField.style.margin = '0'
+        stField.appendChild(el('span', { text: '搜索类型' }))
+        const stSel = document.createElement('select')
+        ;['web', 'image', 'video', 'news', 'discover', 'googleNews'].forEach(function(t) {
+            const opt = document.createElement('option'); opt.value = t; opt.textContent = t; stSel.appendChild(opt)
+        })
+        stSel.value = g.searchType || 'web'
+        stField.appendChild(stSel); srRow.appendChild(stField)
+        const rlField = document.createElement('div'); rlField.className = 'field'; rlField.style.margin = '0'
+        rlField.appendChild(el('span', { text: '最大行数' }))
+        const rlInput = document.createElement('input'); rlInput.type = 'number'; rlInput.min = '1'; rlInput.max = '25000'
+        rlInput.value = g.rowLimit || 100; rlInput.style.width = '80px'
+        rlField.appendChild(rlInput); srRow.appendChild(rlField)
+        editorWrap.appendChild(srRow)
+
+        const obField = document.createElement('div'); obField.className = 'field'
+        obField.appendChild(el('span', { text: '排序' }))
+        const obRow = document.createElement('div'); obRow.style.display = 'flex'; obRow.style.gap = '0.5rem'
+        const obMetSel = document.createElement('select')
+        METRIC_OPTIONS.forEach(function(m) {
+            const opt = document.createElement('option'); opt.value = m; opt.textContent = METRIC_LABELS[m] || m; obMetSel.appendChild(opt)
+        })
+        obMetSel.value = (g.orderBy && g.orderBy.metric) || 'clicks'
+        const obDirSel = document.createElement('select')
+        ;[['descending', '降序'], ['ascending', '升序']].forEach(function(p) {
+            const opt = document.createElement('option'); opt.value = p[0]; opt.textContent = p[1]; obDirSel.appendChild(opt)
+        })
+        obDirSel.value = (g.orderBy && g.orderBy.direction) || 'descending'
+        obRow.appendChild(obMetSel); obRow.appendChild(obDirSel)
+        obField.appendChild(obRow); editorWrap.appendChild(obField)
+
+        editorWrap.appendChild(el('div', { className: 'plan-group-section-label', text: '维度筛选' }))
+        editorWrap.appendChild(el('div', { className: 'field-hint', text: '多行条件支持 AND/OR；全局筛选同维度被分组覆盖，不同维度叠加' }))
+        const fe = buildDimFiltersEditor(g.filters || []); editorWrap.appendChild(fe.el)
+        editorWrap.appendChild(el('div', { className: 'plan-group-section-label', text: '当期指标筛选' }))
+        const mfe = buildMetricFiltersEditor(g.metricFilters || []); editorWrap.appendChild(mfe.el)
+        editorWrap.appendChild(el('div', { className: 'plan-group-section-label', text: '上期指标筛选' }))
+        const pmfe = buildMetricFiltersEditor(g.previousMetricFilters || []); editorWrap.appendChild(pmfe.el)
+        editorWrap.appendChild(el('div', { className: 'plan-group-section-label', text: '变化筛选' }))
+        const dfe = buildDeltaFiltersEditor(g.deltaFilters || []); editorWrap.appendChild(dfe.el)
+
+        eds = { dimCbs, stSel, rlInput, obMetSel, obDirSel, fe, mfe, pmfe, dfe }
+    }
+
+    function renderPresetEditor(g) {
+        editorWrap.innerHTML = ''
+        presetTab.classList.add('active'); customTab.classList.remove('active')
+
+        const presetField = document.createElement('div'); presetField.className = 'field'
+        presetField.appendChild(el('span', { text: '引用预设' }))
+        const presetSel = document.createElement('select')
+        const emptyOpt = document.createElement('option'); emptyOpt.value = ''; emptyOpt.textContent = '-- 选择预设 --'
+        presetSel.appendChild(emptyOpt)
+        ;(state.cachedPresets || []).forEach(function(p) {
+            const opt = document.createElement('option'); opt.value = p.id
+            opt.textContent = p.name + (p.fn && p.fn !== 'comparePeriodsAdvanced' ? ' (' + p.fn + ')' : '')
+            if (g.presetId === p.id) opt.selected = true
+            presetSel.appendChild(opt)
+        })
+        presetField.appendChild(presetSel); editorWrap.appendChild(presetField)
+
+        editorWrap.appendChild(el('div', { className: 'plan-group-section-label', text: '变化筛选（可选，叠加在预设之上）' }))
+        const dfe = buildDeltaFiltersEditor(g.deltaFilters || []); editorWrap.appendChild(dfe.el)
+
+        eds = { presetSel, dfe }
+    }
+
+    if (mode === 'preset') { renderPresetEditor(group) } else { renderCustomEditor(group) }
+
+    customTab.addEventListener('click', function() {
+        if (mode === 'custom') return
+        mode = 'custom'
+        renderCustomEditor({ dimensions: ['query'], searchType: 'web', rowLimit: 100, filters: [], metricFilters: [], previousMetricFilters: [], deltaFilters: [] })
+    })
+    presetTab.addEventListener('click', function() {
+        if (mode === 'preset') return
+        mode = 'preset'
+        renderPresetEditor({ deltaFilters: [] })
+    })
 
     const groupFooter = document.createElement('div'); groupFooter.className = 'plan-group-body-footer'
     const removeBtn = document.createElement('button')
@@ -527,17 +606,21 @@ function buildGroupAccordion(group) {
     return {
         el: card,
         read: function() {
+            const id = group.id || Date.now().toString(36)
+            const name = nameInput.value.trim() || nameSpan.textContent || '未命名分组'
+            if (mode === 'preset') {
+                return { id: id, name: name, presetId: eds.presetSel.value || undefined, deltaFilters: eds.dfe.read() }
+            }
             return {
-                id: group.id || Date.now().toString(36),
-                name: nameInput.value.trim() || nameSpan.textContent || '未命名分组',
-                dimensions: dimCbs.filter(function(cb) { return cb.checked }).map(function(cb) { return cb.value }),
-                searchType: stSel.value,
-                rowLimit: parseInt(rlInput.value) || 100,
-                orderBy: { metric: obMetSel.value, direction: obDirSel.value },
-                filters: fe.read(),
-                metricFilters: mfe.read(),
-                previousMetricFilters: pmfe.read(),
-                deltaFilters: dfe.read()
+                id: id, name: name,
+                dimensions: eds.dimCbs.filter(function(cb) { return cb.checked }).map(function(cb) { return cb.value }),
+                searchType: eds.stSel.value,
+                rowLimit: parseInt(eds.rlInput.value) || 100,
+                orderBy: { metric: eds.obMetSel.value, direction: eds.obDirSel.value },
+                filters: eds.fe.read(),
+                metricFilters: eds.mfe.read(),
+                previousMetricFilters: eds.pmfe.read(),
+                deltaFilters: eds.dfe.read()
             }
         }
     }
