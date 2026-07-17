@@ -91,8 +91,11 @@ const TOOLS = [
     },
     {
         name: 'query_performance',
-        description: `Query GSC search performance data for a site and date range. ` +
-            `Returns rows grouped by the requested dimensions with clicks, impressions, CTR and position. ` +
+        description: `Query GSC search performance data for a single period. ` +
+            `Returns a static snapshot — no prior-period comparison, no delta signals. ` +
+            `⚠️ Prefer compare_periods or run_preset/run_analysis_plan (comparePeriodsAdvanced) for most analyses; ` +
+            `those show trend direction which is what drives actionable decisions. ` +
+            `Use this only when the user explicitly wants a simple one-period lookup. ` +
             `DATA DELAY: ${DATA_DELAY_NOTE}`,
         inputSchema: {
             type: 'object',
@@ -431,12 +434,22 @@ If any tool returns a message containing "invalid_grant", "Token has been expire
 2. Instruct them to: restart the main GSC app (\`npm run dev\` in the project root) and complete the browser-based re-authorization flow.
 3. After re-auth, they should restart the MCP server (\`node server.js\` in the \`mcp/\` directory).
 
+## Query Strategy — Always Prefer Comparison
+
+**Default to compare_periods, run_preset, or run_analysis_plan** for virtually all analyses.
+Comparison queries return delta values (change vs prior period) which tell you whether things are improving
+or declining — that directional signal is what makes analysis actionable.
+
+query_performance returns a static snapshot with no trend context. Only use it when the user explicitly
+asks for a simple lookup and has no interest in the trend (rare).
+
 ## Recommended Workflow
 
 1. **list_sites** — always start here to get valid siteUrl values
-2. **compare_periods** — for trend analysis; automatically computes the equal-length prior period
-3. **run_analysis_plan** — to apply a saved multi-group analysis in one call
-4. **query_performance** — for single-period deep dives
+2. **list_presets** / **list_analysis_plans** — check if a relevant preset or plan already exists before constructing parameters from scratch
+3. **run_preset** or **run_analysis_plan** — execute saved configurations directly
+4. **compare_periods** — for ad-hoc comparison queries not covered by existing presets
+5. **query_performance** — last resort, single-period only, no trend signal
 
 ## Result Truncation
 
@@ -643,11 +656,14 @@ async function callTool(name, args) {
 const SERVER_INSTRUCTIONS = `You are connected to a Google Search Console (GSC) MCP server.
 
 KEY RULES:
-1. GSC Final data has ~3 day delay (Asia/Shanghai, UTC+8). Always adjust endDate when dataState=final.
-   Example: today 2026-07-16 → endDate ≤ 2026-07-13.
-2. Auth errors (invalid_grant, 401, 403) mean the OAuth2 token expired. Tell the user to re-run the Google login flow.
-3. Start with list_sites to discover valid siteUrl values before querying.
-4. When results are truncated (_meta.truncated=true), follow _meta.hint before increasing resultLimit.
+1. ALWAYS prefer compare_periods / run_preset (comparePeriodsAdvanced) / run_analysis_plan over query_performance.
+   Comparison queries show trend deltas (change vs prior period) which have real actionable value.
+   query_performance returns a static snapshot with no directional signal — only use it when the user explicitly asks for a simple lookup with no trend context.
+2. GSC Final data has ~3 day delay (Asia/Shanghai, UTC+8). Always adjust endDate when dataState=final.
+   Example: today 2026-07-17 → endDate ≤ 2026-07-14.
+3. Auth errors (invalid_grant, 401, 403) mean the OAuth2 token expired. Tell the user to re-run the Google login flow.
+4. Start with list_sites to discover valid siteUrl values before querying.
+5. When results are truncated (_meta.truncated=true), follow _meta.hint before increasing resultLimit.
 
 Call the "gsc_usage_guide" prompt for the full operational guide.`
 
