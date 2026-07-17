@@ -93,8 +93,8 @@ export function renderRowsTable(container, rows, dimensions) {
     makeTableSortable(table)
 }
 
-var PCT_CHANGE_METRICS = ['clicks', 'impressions', 'ctr']
-var PCT_CHANGE_LABELS = { clicks: '点击变化%', impressions: '展现变化%', ctr: '点击率变化%' }
+const PCT_CHANGE_METRICS = ['clicks', 'impressions', 'ctr', 'position']
+const PCT_CHANGE_LABELS = { clicks: '点击变化%', impressions: '展现变化%', ctr: '点击率变化%', position: '排名变化%' }
 
 function calcPctChange(current, previous) {
     if (current == null || previous == null) return null
@@ -104,7 +104,7 @@ function calcPctChange(current, previous) {
 
 function formatPctChange(value) {
     if (value == null) return '—'
-    var pct = (value * 100).toFixed(2)
+    const pct = (value * 100).toFixed(2)
     if (value > 0) return '+' + pct + '%'
     if (value < 0) return pct + '%'
     return '0.00%'
@@ -167,12 +167,12 @@ export function renderCompareTable(container, result, dimensions, trendParams) {
 
             if (PCT_CHANGE_METRICS.indexOf(m) >= 0) {
                 const pctTd = document.createElement('td')
-                var curVal = row.current ? row.current[m] : null
-                var prevVal = row.previous ? row.previous[m] : null
-                var pctVal = isNew ? null : calcPctChange(curVal, prevVal)
+                const curVal = row.current ? row.current[m] : null
+                const prevVal = row.previous ? row.previous[m] : null
+                const pctVal = isNew ? null : calcPctChange(curVal, prevVal)
                 pctTd.dataset.sort = pctVal != null ? pctVal : ''
-                var pctText = isNew ? '—' : formatPctChange(pctVal)
-                var cls = isNew ? 'neutral' : pctChangeClass(m, pctVal)
+                const pctText = isNew ? '—' : formatPctChange(pctVal)
+                const cls = isNew ? 'neutral' : pctChangeClass(m, pctVal)
                 pctTd.appendChild(el('span', { className: 'metric-delta ' + cls, text: pctText }))
                 tr.appendChild(pctTd)
             }
