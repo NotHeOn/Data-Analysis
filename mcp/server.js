@@ -31,6 +31,14 @@ function readJson(filePath) {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'))
 }
 
+function writeJson(filePath, data) {
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8')
+}
+
+function generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+}
+
 function withResultLimit(rows, limit) {
     const total = rows.length
     const cap = Math.min(Math.max(1, limit || DEFAULT_RESULT_LIMIT), MAX_RESULT_LIMIT)
@@ -154,6 +162,119 @@ const TOOLS = [
         inputSchema: { type: 'object', properties: {}, required: [] }
     },
     {
+        name: 'save_analysis_plan',
+        description: 'Create a new analysis plan or overwrite an existing one. ' +
+            'Each group defines an independent compare_periods query with its own dimensions, filters, and metric thresholds. ' +
+            'Returns the saved plan including auto-generated IDs. ' +
+            'Tip: design groups around distinct SEO segments (e.g. top-ranked, rising, long-tail) — each group will appear as a separate result table when the plan is run.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                id: {
+                    type: 'string',
+                    description: 'Plan ID. Omit to create a new plan with an auto-generated ID; provide an existing plan ID to overwrite it.'
+                },
+                name: { type: 'string', description: 'Human-readable plan name.' },
+                groups: {
+                    type: 'array',
+                    description: 'Query groups. At least one required.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            id: { type: 'string', description: 'Group ID. Omit to auto-generate.' },
+                            name: { type: 'string', description: 'Group label shown in results.' },
+                            dimensions: {
+                                type: 'array',
+                                items: { type: 'string', enum: ['query', 'page', 'country', 'device', 'date', 'searchAppearance'] },
+                                default: ['query']
+                            },
+                            searchType: { type: 'string', enum: ['web', 'image', 'video', 'news', 'discover', 'googleNews'], default: 'web' },
+                            rowLimit: { type: 'number', description: 'Max rows fetched from GSC per period.', default: 100 },
+                            orderBy: {
+                                type: 'object',
+                                properties: {
+                                    metric: { type: 'string', enum: ['clicks', 'impressions', 'ctr', 'position'] },
+                                    direction: { type: 'string', enum: ['ascending', 'descending'] }
+                                }
+                            },
+                            filters: {
+                                type: 'array',
+                                description: 'Dimension filters applied at the GSC API level (e.g. query contains "keyword", page equals "/blog/").',
+                                items: {
+                                    type: 'object',
+                                    properties: {
+                                        dimension: { type: 'string', enum: ['query', 'page', 'country', 'device', 'searchAppearance'] },
+                                        operator: { type: 'string', enum: ['contains', 'notContains', 'equals', 'notEquals', 'includingRegex', 'excludingRegex'] },
+                                        expression: { type: 'string' }
+                                    },
+                                    required: ['dimension', 'operator', 'expression']
+                                },
+                                default: []
+                            },
+                            metricFilters: {
+                                type: 'array',
+                                description: 'Filter rows by current-period metric values after the query (e.g. position <= 10, impressions >= 50).',
+                                items: {
+                                    type: 'object',
+                                    properties: {
+                                        metric: { type: 'string', enum: ['clicks', 'impressions', 'ctr', 'position'] },
+                                        operator: { type: 'string', enum: ['>', '>=', '<', '<=', '=', '!='] },
+                                        value: { type: 'number' }
+                                    },
+                                    required: ['metric', 'operator', 'value']
+                                },
+                                default: []
+                            },
+                            previousMetricFilters: {
+                                type: 'array',
+                                description: 'Same structure as metricFilters but applied to the previous period values.',
+                                items: {
+                                    type: 'object',
+                                    properties: {
+                                        metric: { type: 'string', enum: ['clicks', 'impressions', 'ctr', 'position'] },
+                                        operator: { type: 'string', enum: ['>', '>=', '<', '<=', '=', '!='] },
+                                        value: { type: 'number' }
+                                    },
+                                    required: ['metric', 'operator', 'value']
+                                },
+                                default: []
+                            },
+                            deltaFilters: {
+                                type: 'array',
+                                description: 'Filter rows by the change between periods. metric is one of clicks/impressions/ctr/position; value is absolute delta unless isPercent=true.',
+                                items: {
+                                    type: 'object',
+                                    properties: {
+                                        metric: { type: 'string', enum: ['clicks', 'impressions', 'ctr', 'position'] },
+                                        operator: { type: 'string', enum: ['>', '>=', '<', '<=', '=', '!='] },
+                                        value: { type: 'number' },
+                                        isPercent: { type: 'boolean', default: false }
+                                    },
+                                    required: ['metric', 'operator', 'value']
+                                },
+                                default: []
+                            }
+                        },
+                        required: ['name']
+                    },
+                    minItems: 1
+                }
+            },
+            required: ['name', 'groups']
+        }
+    },
+    {
+        name: 'delete_analysis_plan',
+        description: 'Permanently delete an analysis plan by ID. Use list_analysis_plans to find the ID first. This cannot be undone.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                id: { type: 'string', description: 'Plan ID to delete.' }
+            },
+            required: ['id']
+        }
+    },
+    {
         name: 'run_analysis_plan',
         description: `Execute a saved analysis plan across multiple query groups in sequence. ` +
             `Each group runs compare_periods with its own filter configuration. ` +
@@ -268,6 +389,44 @@ async function callTool(name, args) {
 
         case 'list_analysis_plans':
             return readJson(plansPath)
+
+        case 'save_analysis_plan': {
+            const plans = readJson(plansPath)
+            const isNew = !args.id || !plans.some(p => p.id === args.id)
+            const planId = isNew ? generateId() : args.id
+            const plan = {
+                id: planId,
+                name: args.name,
+                groups: (args.groups || []).map(g => ({
+                    id: g.id || generateId(),
+                    name: g.name,
+                    dimensions: g.dimensions || ['query'],
+                    searchType: g.searchType || 'web',
+                    rowLimit: g.rowLimit || 100,
+                    orderBy: g.orderBy || undefined,
+                    filters: g.filters || [],
+                    metricFilters: g.metricFilters || [],
+                    previousMetricFilters: g.previousMetricFilters || [],
+                    deltaFilters: g.deltaFilters || []
+                }))
+            }
+            if (isNew) {
+                plans.push(plan)
+            } else {
+                const idx = plans.findIndex(p => p.id === planId)
+                plans[idx] = plan
+            }
+            writeJson(plansPath, plans)
+            return { ok: true, action: isNew ? 'created' : 'updated', plan }
+        }
+
+        case 'delete_analysis_plan': {
+            const plans = readJson(plansPath)
+            const exists = plans.some(p => p.id === args.id)
+            if (!exists) throw new Error(`Plan '${args.id}' not found`)
+            writeJson(plansPath, plans.filter(p => p.id !== args.id))
+            return { ok: true, deleted: args.id }
+        }
 
         case 'run_analysis_plan': {
             const plans = readJson(plansPath)
